@@ -238,7 +238,7 @@
         '<td><span class="item-kind-badge">' + escapeHtml(ITEM_KIND_LABELS[item.kind] || item.kind) + "</span></td>" +
         '<td><input type="text" data-k="desc" value="' + escapeAttr(item.desc) + '"></td>' +
         '<td class="num"><input type="number" step="0.01" min="0" data-k="cost" value="' + item.cost + '" style="text-align:right"></td>' +
-        '<td class="num"><input type="number" step="0.01" min="0" data-k="qty" value="' + item.qty + '" style="text-align:right"></td>' +
+        '<td class="num"><input type="number" step="1" min="0" data-k="qty" value="' + item.qty + '" style="text-align:right"></td>' +
         '<td class="num"><input type="number" step="0.01" min="0" data-k="sell" value="' + item.sell + '" style="text-align:right"></td>' +
         '<td class="num markup-cell">' + markupCell + "</td>" +
         '<td class="num" data-k="total">' + fmt(itemTotal(item)) + "</td>" +
@@ -1429,7 +1429,7 @@
         '<td><span class="item-kind-badge">' + escapeHtml(ITEM_KIND_LABELS[item.kind] || item.kind) + "</span></td>" +
         '<td><input type="text" data-k="desc" value="' + escapeAttr(item.desc) + '"></td>' +
         '<td class="num"><input type="number" step="0.01" min="0" data-k="cost" value="' + item.cost + '" style="text-align:right"></td>' +
-        '<td class="num"><input type="number" step="0.01" min="0" data-k="qty" value="' + item.qty + '" style="text-align:right"></td>' +
+        '<td class="num"><input type="number" step="1" min="0" data-k="qty" value="' + item.qty + '" style="text-align:right"></td>' +
         '<td class="num"><input type="number" step="0.01" min="0" data-k="sell" value="' + item.sell + '" style="text-align:right"></td>' +
         '<td class="num markup-cell">' + markupCell + "</td>" +
         '<td class="num" data-k="total">' + fmt(itemTotal(item)) + "</td>" +
