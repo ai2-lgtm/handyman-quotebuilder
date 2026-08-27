@@ -211,6 +211,17 @@
 
   function isLocked() { return builder.status === "Sent to Jobber"; }
 
+  // recalcBuilder() touches ~20 DOM nodes and rebuilds the status action bar;
+  // saveDraft() serializes the whole quote to localStorage. Both are cheap
+  // once, but a held-down number-input spin button fires an "input" event on
+  // every 0.01 step - rapid-fire enough that this synchronous work starves
+  // the browser's own repaint of the input box being spun, so it visibly
+  // shows a stale/rounded digit while Total/Profit (computed fresh from the
+  // real value) race ahead. Debouncing the expensive part lets the browser
+  // catch up; each row's own Total/Profit cells still update immediately
+  // since those are just two cheap textContent writes.
+  var debouncedRecalcAndSave = debounce(function () { recalcBuilder(); saveDraft(); }, 120);
+
   // ---- unified, type-polymorphic items table ----
   function renderItemsTable() {
     var bodyEl = document.getElementById("itemsBody");
@@ -262,8 +273,7 @@
           }
           tr.querySelector('[data-k="total"]').textContent = fmt(itemTotal(item));
           tr.querySelector('[data-k="profit"]').textContent = fmt(itemProfit(item));
-          recalcBuilder();
-          saveDraft();
+          debouncedRecalcAndSave();
         });
       });
       tr.querySelector(".row-del").addEventListener("click", function () {
@@ -575,15 +585,13 @@
       document.getElementById(id).addEventListener("input", function () {
         builder[id] = +this.value || 0;
         if (id === "discountPct") document.getElementById("discountRange").value = builder[id];
-        recalcBuilder();
-        saveDraft();
+        debouncedRecalcAndSave();
       });
     });
     document.getElementById("discountRange").addEventListener("input", function () {
       builder.discountPct = +this.value || 0;
       document.getElementById("discountPct").value = builder.discountPct;
-      recalcBuilder();
-      saveDraft();
+      debouncedRecalcAndSave();
     });
     document.getElementById("callOut").addEventListener("change", function () {
       builder.callOut = this.checked;
