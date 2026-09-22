@@ -2313,6 +2313,52 @@ def update_amc_client(cid, body, actor_email):
     return json_response(200, amc_client_to_dict(row))
 
 
+def renew_amc_client(cid, actor_email):
+    """Archives the client's current contract year into amc_history, then
+    rolls start/end forward to the next year and resets everything that's
+    per-year (visit sign-offs, WTC, handyman, payment) back to Pending -
+    same defaults create_amc_client() uses for a brand new client. Without
+    this, amc_history only ever holds the one-time historical import and a
+    client's Contract History panel stays empty forever, no matter how many
+    times they actually renew."""
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM amc_clients WHERE id=?", (cid,)).fetchone()
+    if not row:
+        conn.close()
+        return json_response(404, {"error": "not found"})
+
+    old_start, old_end = amc.parse_date(row["start_date"]), amc.parse_date(row["end_date"])
+    if not old_start or not old_end:
+        conn.close()
+        return json_response(400, {"error": "this client has no valid start/end date to renew from"})
+
+    new_start = old_end + timedelta(days=1)
+    new_end = amc.one_year_minus_day(new_start)
+    year_label = "%d-%02d" % (old_start.year, (old_start.year + 1) % 100)
+    hm_allowed = amc.HANDYMAN_VISITS.get(row["package"], 0)
+    ts = now_iso()
+
+    conn.execute(
+        "INSERT INTO amc_history (team, client_id, customer, location, year, package, start_date, end_date, "
+        "status, payment, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (row["team"], cid, row["customer"], row["location"], year_label, row["package"],
+         row["start_date"], row["end_date"], "Expired", row["pay_status"], row["pay_notes"], ts),
+    )
+    conn.execute(
+        "UPDATE amc_clients SET start_date=?, end_date=?, pay_status='Unpaid', pay_notes='', "
+        "v1_done='', v2_done='', v3_done='', v4_done='', wtc_status='Pending', wtc_date='', "
+        "hm1_status=?, hm1_date='', hm1_job='', hm2_status=?, hm2_date='', hm2_job='', flag='', "
+        "updated_at=?, updated_by_email=? WHERE id=?",
+        (new_start.isoformat(), new_end.isoformat(),
+         "Pending" if hm_allowed >= 1 else "N/A", "Pending" if hm_allowed >= 2 else "N/A",
+         ts, actor_email, cid),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM amc_clients WHERE id=?", (cid,)).fetchone()
+    conn.close()
+    return json_response(200, amc_client_to_dict(row))
+
+
 def amc_history_to_dict(r):
     return {"id": r["id"], "team": r["team"], "clientId": r["client_id"], "customer": r["customer"],
             "location": r["location"], "year": r["year"], "package": r["package"], "start": r["start_date"],
@@ -3050,6 +3096,9 @@ def handle_post(environ, path, body):
             return reset_pricebook_team(body.get("team"))
         if path == "/api/amc/clients":
             return create_amc_client(body, user["email"])
+        m = re.match(r"^/api/amc/clients/([\w-]+)/renew$", path)
+        if m:
+            return renew_amc_client(m.group(1), user["email"])
         if path == "/api/amc/actions-handled":
             return set_amc_action_handled(body, user["email"])
         if path == "/api/amc-proposals":

@@ -2661,7 +2661,8 @@
 
     return '<tr class="amc-row-detail" data-detail-for="' + c.id + '"><td colspan="14">' +
       '<div class="amc-detail-grid">' +
-        '<div class="amc-detail-block"><h4>Contract</h4>' +
+        '<div class="amc-detail-block"><div class="amc-detail-block-head"><h4>Contract</h4>' +
+          '<button type="button" class="btn btn-ghost btn-sm amc-renew-btn">Renew Contract &rarr;</button></div>' +
           '<div class="amc-field-row"><label>Location</label><input type="text" data-field="location" value="' + escapeAttr(c.location || "") + '"></div>' +
           '<div class="amc-field-row"><label>Address</label><input type="text" data-field="address" value="' + escapeAttr(c.address || "") + '"></div>' +
           '<div class="amc-field-inline">' +
@@ -2707,29 +2708,81 @@
 
         (c.flag ? '<div class="amc-detail-notice">⚠ ' + escapeHtml(c.flag) + "</div>" : "") +
       "</div>" +
-      '<div class="amc-save-hint">Changes save automatically as you edit.</div>' +
+      '<div class="amc-detail-actions">' +
+        '<button type="button" class="btn btn-orange btn-sm amc-save-btn" style="display:none">Save Changes</button>' +
+        '<button type="button" class="btn btn-ghost btn-sm amc-cancel-btn" style="display:none">Cancel</button>' +
+        '<span class="hint amc-save-hint">Editing — changes are not saved until you click Save.</span>' +
+      "</div>" +
     "</td></tr>";
   }
 
+  // Fields no longer save one at a time on every change - editing the row
+  // reveals Save/Cancel, and Save sends every field in this row as a single
+  // batched PUT (the API already accepts any subset of AMC_CLIENT_FIELD_COLUMNS
+  // in one request), so a run of edits across several fields becomes one
+  // confirmed save instead of one silent request per field.
   function amcWireDetailInputs() {
-    document.querySelectorAll("tr.amc-row-detail [data-field]").forEach(function (input) {
-      input.addEventListener("change", function () {
-        var tr = input.closest("tr.amc-row-detail");
-        var id = tr.dataset.detailFor;
-        var field = input.dataset.field;
-        var body = {}; body[field] = input.value;
-        API.put("/api/amc/clients/" + id, body).then(function (updated) {
-          var idx = AMC_CLIENTS.findIndex(function (c) { return c.id === id; });
-          toast("Saved");
-          if (field === "team" && updated.team !== ACTIVE_TEAM) {
-            if (idx !== -1) AMC_CLIENTS.splice(idx, 1);
-            amcExpandedRowId = null;
-          } else if (idx !== -1) {
-            AMC_CLIENTS[idx] = updated;
-          }
-          amcRenderTracker();
-          amcRenderDashboard();
-        }).catch(function () { toast("Could not save"); });
+    document.querySelectorAll("tr.amc-row-detail").forEach(function (tr) {
+      var id = tr.dataset.detailFor;
+      var saveBtn = tr.querySelector(".amc-save-btn");
+      var cancelBtn = tr.querySelector(".amc-cancel-btn");
+      var renewBtn = tr.querySelector(".amc-renew-btn");
+      var hint = tr.querySelector(".amc-save-hint");
+      var fields = tr.querySelectorAll("[data-field]");
+
+      renewBtn.addEventListener("click", function () {
+        var client = AMC_CLIENTS.filter(function (x) { return x.id === id; })[0];
+        if (!client || !client.end) { toast("This client has no end date to renew from"); return; }
+        var endParts = client.end.split("-").map(Number);
+        var newStart = new Date(endParts[0], endParts[1] - 1, endParts[2] + 1);
+        var newEnd = amcOneYearMinusDay(amcIso(newStart));
+        confirmDialog(
+          "Renew " + client.customer + "'s contract? This archives " + amcFmtDate(client.start) + " – " +
+          amcFmtDate(client.end) + " into Contract History, then starts a new year from " +
+          amcFmtDate(amcIso(newStart)) + " to " + amcFmtDate(newEnd) +
+          ". Visit sign-offs, WTC, handyman and payment status all reset for the new year."
+        ).then(function (ok) {
+          if (!ok) return;
+          API.post("/api/amc/clients/" + id + "/renew", {}).then(function () {
+            toast("Contract renewed");
+            loadAmcAll();
+          }).catch(function (err) { toast(err.message || "Could not renew"); });
+        });
+      });
+
+      function showActions() {
+        saveBtn.style.display = "";
+        cancelBtn.style.display = "";
+        hint.textContent = "Unsaved changes.";
+      }
+
+      fields.forEach(function (input) {
+        input.addEventListener("input", showActions);
+        input.addEventListener("change", showActions);
+      });
+
+      cancelBtn.addEventListener("click", function () {
+        amcRenderTracker();
+      });
+
+      saveBtn.addEventListener("click", function () {
+        var body = {};
+        fields.forEach(function (input) { body[input.dataset.field] = input.value; });
+        confirmDialog("Save changes to this client's record?").then(function (ok) {
+          if (!ok) return;
+          API.put("/api/amc/clients/" + id, body).then(function (updated) {
+            var idx = AMC_CLIENTS.findIndex(function (c) { return c.id === id; });
+            toast("Saved");
+            if (updated.team !== ACTIVE_TEAM) {
+              if (idx !== -1) AMC_CLIENTS.splice(idx, 1);
+              amcExpandedRowId = null;
+            } else if (idx !== -1) {
+              AMC_CLIENTS[idx] = updated;
+            }
+            amcRenderTracker();
+            amcRenderDashboard();
+          }).catch(function () { toast("Could not save"); });
+        });
       });
     });
   }

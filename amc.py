@@ -62,6 +62,18 @@ def add_months(d, n):
     return date(year, month, min(d.day, last_day))
 
 
+def one_year_minus_day(start):
+    """A contract year's end date given its start: one year later, minus a
+    day (so back-to-back years never overlap) - matches the frontend's own
+    amcOneYearMinusDay() exactly, including how it lands on 28 Feb the year
+    after a 29 Feb start."""
+    try:
+        d = start.replace(year=start.year + 1)
+    except ValueError:
+        d = date(start.year + 1, 3, 1)
+    return d - timedelta(days=1)
+
+
 def visit_due_date(start_iso, offset):
     start = parse_date(start_iso)
     if not start:
