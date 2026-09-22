@@ -2426,7 +2426,14 @@
 
   function amcSwitchSubtab(name) {
     document.querySelectorAll("#amcSubnav .amc-subtab").forEach(function (b) { b.classList.toggle("active", b.dataset.amc === name); });
-    document.querySelectorAll(".amc-panel").forEach(function (p) { p.classList.toggle("active", p.id === "amc-" + name); });
+    document.querySelectorAll(".amc-panel").forEach(function (p) {
+      var isActive = p.id === "amc-" + name;
+      p.classList.toggle("active", isActive);
+      // classList alone can't win against the inline style="display:none"
+      // these panels are born with in index.html - clear it explicitly so
+      // the .amc-panel.active CSS rule actually takes effect.
+      p.style.display = isActive ? "" : "none";
+    });
   }
 
   function loadAmcAll() {

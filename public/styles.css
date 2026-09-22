@@ -271,7 +271,7 @@ summary{cursor:pointer;font-size:12px;color:var(--blue);font-weight:600;padding:
 .amber-text{color:#C25E00;font-weight:600;}
 
 .pb-search-row{margin-bottom:10px;}
-.pb-section-title{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--blue);margin:0 0 8px;}
+.pb-section-title{font-size:19px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--blue);margin:0 0 8px;}
 
 /* ---- Print-only header (logo + company + contact line) ---- */
 .print-header{display:none;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid var(--ink);}
