@@ -211,11 +211,17 @@
   }
 
   function onTeamChanged() {
+    if (document.getElementById("tab-home").style.display !== "none") {
+      loadHome();
+    }
     if (document.getElementById("tab-pricebook").style.display !== "none") {
-      reloadPbMaterials(); reloadPbLabour(); reloadPbFixed(); reloadPbSuppliers();
+      reloadPbMaterials(); reloadPbLabour(); reloadPbFixed(); reloadPbSuppliers(); reloadPbContractors();
     }
     if (document.getElementById("tab-builder").style.display !== "none") {
       loadCatalogIntoBuilder();
+    }
+    if (document.getElementById("tab-saved").style.display !== "none") {
+      loadSaved();
     }
     if (document.getElementById("tab-amc").style.display !== "none") {
       loadAmcAll();
@@ -395,7 +401,7 @@
       API.get("/api/pricebook/materials" + pbTeamQuery()).then(function (d) { PB_CATALOG.materials = d.materials; }),
       API.get("/api/pricebook/labour" + pbTeamQuery()).then(function (d) { PB_CATALOG.labour = d.labour; }),
       API.get("/api/pricebook/fixed-services" + pbTeamQuery()).then(function (d) { PB_CATALOG.fixedServices = d.fixedServices; }),
-      API.get("/api/pricebook/contractors").then(function (d) { PB_CATALOG.contractors = d.contractors; })
+      API.get("/api/pricebook/contractors" + pbTeamQuery()).then(function (d) { PB_CATALOG.contractors = d.contractors; })
     ]).then(function () {
       populateItemCatalogSelect();
     }).catch(function () { toast("Could not reach the server for the price book"); });
@@ -828,6 +834,7 @@
     document.getElementById("btnSaveQuote").addEventListener("click", function () {
       recalcBuilder();
       var payload = JSON.parse(JSON.stringify(builder));
+      payload.team = ACTIVE_TEAM;
       var req = builder.id ? API.put("/api/quotes/" + builder.id, payload) : API.post("/api/quotes", payload);
       req.then(function (saved) {
         loadQuoteIntoBuilder(saved);
@@ -1248,6 +1255,28 @@
     return "?" + params.join("&");
   }
 
+  function otherTeam(team) {
+    return team === "dubai" ? "magcity" : "dubai";
+  }
+
+  // After a material/labour/fixed-service/supplier/contractor is created for
+  // ACTIVE_TEAM, offer to create the same row for the other team too -
+  // Dubai and MAG City each keep their own catalog, so this is the only way
+  // one add creates both without re-typing everything a second time.
+  // createForTeam(team) must return the same API.post(...) promise used for
+  // the original create, just aimed at `team` instead.
+  function maybeDuplicateToOtherTeam(itemLabel, createForTeam) {
+    var other = otherTeam(ACTIVE_TEAM);
+    return confirmDialog("Also add this " + itemLabel + " to " + TEAM_LABELS[other] + "?").then(function (yes) {
+      if (!yes) return;
+      return createForTeam(other).then(function () {
+        toast("Added to " + TEAM_LABELS[other] + " too");
+      }).catch(function () {
+        toast("Added to " + TEAM_LABELS[ACTIVE_TEAM] + ", but could not add to " + TEAM_LABELS[other]);
+      });
+    });
+  }
+
   function reloadPbMaterials() {
     var q = document.getElementById("pbMaterialsSearch").value;
     API.get("/api/pricebook/materials" + pbTeamQuery(q ? "q=" + encodeURIComponent(q) : "")).then(function (d) {
@@ -1270,16 +1299,34 @@
     }).catch(function () { toast("Could not load fixed services"); });
   }
 
+  // Suppliers load unfiltered (no server q= here) - the search box and the
+  // category pills both filter this same in-memory list client-side, so
+  // picking a pill and typing a search term combine instantly with no
+  // extra round trip.
+  var PB_SUPPLIERS_ALL = [];
+  var PB_SUPPLIERS_CATEGORY = "";
+
   function reloadPbSuppliers() {
-    var q = document.getElementById("pbSuppliersSearch").value;
-    API.get("/api/pricebook/suppliers" + pbTeamQuery(q ? "q=" + encodeURIComponent(q) : "")).then(function (d) {
-      renderPbSuppliers(d.suppliers);
+    API.get("/api/pricebook/suppliers" + pbTeamQuery()).then(function (d) {
+      PB_SUPPLIERS_ALL = d.suppliers;
+      PB_SUPPLIERS_CATEGORY = "";
+      renderPbSuppliers();
     }).catch(function () { toast("Could not load suppliers"); });
+  }
+
+  function filteredSuppliers() {
+    var q = document.getElementById("pbSuppliersSearch").value.trim().toLowerCase();
+    return PB_SUPPLIERS_ALL.filter(function (s) {
+      if (PB_SUPPLIERS_CATEGORY && (s.category || "Uncategorized") !== PB_SUPPLIERS_CATEGORY) return false;
+      if (!q) return true;
+      var hay = [s.name, s.category, s.location, s.services].join(" ").toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
   }
 
   function reloadPbContractors() {
     var q = document.getElementById("pbContractorsSearch").value;
-    API.get("/api/pricebook/contractors" + (q ? "?q=" + encodeURIComponent(q) : "")).then(function (d) {
+    API.get("/api/pricebook/contractors" + pbTeamQuery(q ? "q=" + encodeURIComponent(q) : "")).then(function (d) {
       PB_CATALOG.contractors = d.contractors;
       renderPbContractors(d.contractors);
     }).catch(function () { toast("Could not load contractors"); });
@@ -1383,53 +1430,122 @@
     });
   }
 
-  function renderPbSuppliers(rows) {
-    var body = document.getElementById("pbSuppliersBody");
-    body.innerHTML = "";
+  function renderPbSupplierPills() {
+    var wrap = document.getElementById("pbSuppliersCategoryPills");
+    if (!wrap) return;
+    var counts = {};
+    PB_SUPPLIERS_ALL.forEach(function (s) {
+      var cat = s.category || "Uncategorized";
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+    var categories = Object.keys(counts).sort();
+    wrap.innerHTML = "";
+    var allBtn = document.createElement("button");
+    allBtn.type = "button";
+    allBtn.className = "amc-subtab" + (PB_SUPPLIERS_CATEGORY === "" ? " active" : "");
+    allBtn.innerHTML = "All <span class=\"amc-count\">" + PB_SUPPLIERS_ALL.length + "</span>";
+    allBtn.addEventListener("click", function () { PB_SUPPLIERS_CATEGORY = ""; renderPbSuppliers(); });
+    wrap.appendChild(allBtn);
+    categories.forEach(function (cat) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "amc-subtab" + (PB_SUPPLIERS_CATEGORY === cat ? " active" : "");
+      btn.innerHTML = escapeHtml(cat) + " <span class=\"amc-count\">" + counts[cat] + "</span>";
+      btn.addEventListener("click", function () { PB_SUPPLIERS_CATEGORY = cat; renderPbSuppliers(); });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function buildSupplierViewCard(s, isAdmin) {
+    var card = document.createElement("div");
+    card.className = "supplier-card" + (s.preferred ? " preferred" : "");
+    card.innerHTML =
+      '<div class="supplier-head">' +
+        '<div><span class="supplier-name">' + escapeHtml(s.name) + "</span>" + (s.preferred ? '<span class="pref-pill">Preferred</span>' : "") +
+        '<div class="supplier-loc">' + escapeHtml(s.category || "Uncategorized") + (s.location ? " · " + escapeHtml(s.location) : "") + "</div></div>" +
+        '<div class="supplier-actions"></div>' +
+      "</div>" +
+      (s.services ? '<div class="supplier-services">' + escapeHtml(s.services) + "</div>" : "") +
+      ((s.phone || s.email) ? '<div class="supplier-contacts">' +
+        (s.phone ? '<a href="tel:' + escapeAttr(s.phone) + '">' + escapeHtml(s.phone) + "</a>" : "") +
+        (s.email ? '<a href="mailto:' + escapeAttr(s.email) + '">' + escapeHtml(s.email) + "</a>" : "") +
+      "</div>" : "");
+    if (isAdmin) {
+      var actions = card.querySelector(".supplier-actions");
+      var editBtn = document.createElement("button");
+      editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", function () {
+        card.replaceWith(buildSupplierEditCard(s, isAdmin));
+      });
+      actions.appendChild(editBtn);
+      var delBtn = document.createElement("button");
+      delBtn.className = "btn btn-ghost btn-sm"; delBtn.textContent = "Delete"; delBtn.style.marginLeft = "6px";
+      delBtn.addEventListener("click", function () {
+        confirmDialog('Remove supplier "' + s.name + '"?').then(function (ok) {
+          if (!ok) return;
+          API.del("/api/pricebook/suppliers/" + s.id).then(function () { toast("Removed"); reloadPbSuppliers(); }).catch(function () { toast("Could not remove"); });
+        });
+      });
+      actions.appendChild(delBtn);
+    }
+    return card;
+  }
+
+  function buildSupplierEditCard(s, isAdmin) {
+    var card = document.createElement("div");
+    card.className = "supplier-card supplier-card-editing";
+    card.innerHTML =
+      '<div class="supplier-edit-grid">' +
+        '<input type="text" class="sc-category" placeholder="Category" value="' + escapeAttr(s.category || "") + '">' +
+        '<input type="text" class="sc-name" placeholder="Name" value="' + escapeAttr(s.name || "") + '">' +
+        '<input type="text" class="sc-location" placeholder="Location" value="' + escapeAttr(s.location || "") + '">' +
+        '<input type="text" class="sc-phone" placeholder="Phone" value="' + escapeAttr(s.phone || "") + '">' +
+        '<input type="text" class="sc-email" placeholder="Email" value="' + escapeAttr(s.email || "") + '">' +
+        '<input type="text" class="sc-services" placeholder="Services / notes" value="' + escapeAttr(s.services || "") + '">' +
+      "</div>" +
+      '<label class="supplier-edit-preferred"><input type="checkbox" class="sc-preferred"' + (s.preferred ? " checked" : "") + "> Preferred</label>" +
+      '<div class="supplier-edit-actions">' +
+        '<button type="button" class="btn btn-orange btn-sm sc-save">Save</button>' +
+        '<button type="button" class="btn btn-ghost btn-sm sc-cancel">Cancel</button>' +
+      "</div>";
+    card.querySelector(".sc-cancel").addEventListener("click", function () {
+      card.replaceWith(buildSupplierViewCard(s, isAdmin));
+    });
+    card.querySelector(".sc-save").addEventListener("click", function () {
+      var updated = {
+        category: card.querySelector(".sc-category").value.trim(),
+        name: card.querySelector(".sc-name").value.trim(),
+        location: card.querySelector(".sc-location").value.trim(),
+        phone: card.querySelector(".sc-phone").value.trim(),
+        email: card.querySelector(".sc-email").value.trim(),
+        services: card.querySelector(".sc-services").value.trim(),
+        preferred: card.querySelector(".sc-preferred").checked
+      };
+      if (!updated.name) { toast("Name is required"); return; }
+      confirmDialog('Save changes to "' + updated.name + '"?').then(function (ok) {
+        if (!ok) return;
+        API.put("/api/pricebook/suppliers/" + s.id, updated).then(function () {
+          toast("Updated");
+          reloadPbSuppliers();
+        }).catch(function () { toast("Could not update"); });
+      });
+    });
+    return card;
+  }
+
+  function renderPbSuppliers() {
+    renderPbSupplierPills();
+    var grid = document.getElementById("pbSuppliersCardGrid");
+    var countLbl = document.getElementById("pbSuppliersCount");
     var isAdmin = CURRENT_USER_ROLE === "admin";
+    var rows = filteredSuppliers();
+    grid.innerHTML = "";
+    if (countLbl) countLbl.textContent = rows.length + " supplier" + (rows.length === 1 ? "" : "s") + " shown";
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="8" class="hint">No suppliers yet for this location.</td></tr>';
+      grid.innerHTML = '<p class="hint">No suppliers match.</p>';
       return;
     }
-    rows.forEach(function (s) {
-      var tr = document.createElement("tr");
-      tr.innerHTML =
-        "<td>" + escapeHtml(s.category || "—") + "</td><td>" + escapeHtml(s.name) + "</td>" +
-        "<td>" + escapeHtml(s.location || "—") + "</td>" +
-        "<td>" + (s.phone ? '<a href="tel:' + escapeAttr(s.phone) + '">' + escapeHtml(s.phone) + "</a>" : "—") + "</td>" +
-        "<td>" + (s.email ? '<a href="mailto:' + escapeAttr(s.email) + '">' + escapeHtml(s.email) + "</a>" : "—") + "</td>" +
-        "<td>" + escapeHtml(s.services || "—") + "</td>" +
-        "<td>" + (s.preferred ? '<span class="pref-pill">Preferred</span>' : "—") + "</td>" +
-        '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
-      if (isAdmin) {
-        var actionsCell = tr.querySelector(".pb-actions");
-        var editBtn = document.createElement("button");
-        editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
-        editBtn.addEventListener("click", function () {
-          var category = prompt("Category", s.category || ""); if (category === null) return;
-          var name = prompt("Name", s.name || ""); if (name === null) return;
-          var location = prompt("Location", s.location || ""); if (location === null) return;
-          var phone = prompt("Phone", s.phone || ""); if (phone === null) return;
-          var email = prompt("Email", s.email || ""); if (email === null) return;
-          var services = prompt("Services / notes", s.services || ""); if (services === null) return;
-          var preferred = confirm("Preferred supplier? OK = Yes, Cancel = No. (Currently: " + (s.preferred ? "Yes" : "No") + ")");
-          API.put("/api/pricebook/suppliers/" + s.id, { category: category, name: name, location: location, phone: phone, email: email, services: services, preferred: preferred })
-            .then(function () { toast("Updated"); reloadPbSuppliers(); })
-            .catch(function () { toast("Could not update"); });
-        });
-        actionsCell.appendChild(editBtn);
-        var delBtn = document.createElement("button");
-        delBtn.className = "btn btn-ghost btn-sm"; delBtn.textContent = "Delete"; delBtn.style.marginLeft = "6px";
-        delBtn.addEventListener("click", function () {
-          confirmDialog('Remove supplier "' + s.name + '"?').then(function (ok) {
-            if (!ok) return;
-            API.del("/api/pricebook/suppliers/" + s.id).then(function () { toast("Removed"); reloadPbSuppliers(); }).catch(function () { toast("Could not remove"); });
-          });
-        });
-        actionsCell.appendChild(delBtn);
-      }
-      body.appendChild(tr);
-    });
+    rows.forEach(function (s) { grid.appendChild(buildSupplierViewCard(s, isAdmin)); });
   }
 
   function renderPbContractors(contractors) {
@@ -1560,7 +1676,7 @@
     document.getElementById("pbMaterialsSearch").addEventListener("input", debounce(reloadPbMaterials, 250));
     document.getElementById("pbLabourSearch").addEventListener("input", debounce(reloadPbLabour, 250));
     document.getElementById("pbFixedSearch").addEventListener("input", debounce(reloadPbFixed, 250));
-    document.getElementById("pbSuppliersSearch").addEventListener("input", debounce(reloadPbSuppliers, 250));
+    document.getElementById("pbSuppliersSearch").addEventListener("input", function () { renderPbSuppliers(); });
     document.getElementById("pbContractorsSearch").addEventListener("input", debounce(reloadPbContractors, 250));
 
     document.getElementById("btnExportPricebook").addEventListener("click", function () {
@@ -1585,8 +1701,7 @@
       var bar = document.getElementById("pbMaterialsAddBar");
       var item = bar.querySelector(".pb-new-item").value.trim();
       if (!item) { toast("Enter an item name"); return; }
-      API.post("/api/pricebook/materials", {
-        team: ACTIVE_TEAM,
+      var body = {
         category: bar.querySelector(".pb-new-cat").value.trim(),
         itemName: item,
         brand: bar.querySelector(".pb-new-brand").value.trim(),
@@ -1595,10 +1710,14 @@
         cost: bar.querySelector(".pb-new-cost").value === "" ? null : +bar.querySelector(".pb-new-cost").value,
         defaultSell: bar.querySelector(".pb-new-sell").value === "" ? null : +bar.querySelector(".pb-new-sell").value,
         supplier: bar.querySelector(".pb-new-supplier").value.trim()
-      }).then(function () {
+      };
+      API.post("/api/pricebook/materials", Object.assign({ team: ACTIVE_TEAM }, body)).then(function () {
         bar.querySelectorAll("input").forEach(function (i) { i.value = ""; });
         toast("Material added");
         reloadPbMaterials();
+        return maybeDuplicateToOtherTeam("material", function (team) {
+          return API.post("/api/pricebook/materials", Object.assign({ team: team }, body));
+        });
       }).catch(function () { toast("Could not add material"); });
     });
 
@@ -1606,18 +1725,21 @@
       var bar = document.getElementById("pbLabourAddBar");
       var role = bar.querySelector(".pb-new-role").value.trim();
       if (!role) { toast("Enter a role name"); return; }
-      API.post("/api/pricebook/labour", {
-        team: ACTIVE_TEAM,
+      var body = {
         roleName: role,
         labourType: bar.querySelector(".pb-new-labour-type").value,
         cost: bar.querySelector(".pb-new-cost").value === "" ? null : +bar.querySelector(".pb-new-cost").value,
         defaultSell: bar.querySelector(".pb-new-sell").value === "" ? null : +bar.querySelector(".pb-new-sell").value,
         unit: bar.querySelector(".pb-new-unit").value.trim()
-      }).then(function () {
+      };
+      API.post("/api/pricebook/labour", Object.assign({ team: ACTIVE_TEAM }, body)).then(function () {
         bar.querySelector(".pb-new-role").value = "";
         bar.querySelectorAll("input").forEach(function (i) { i.value = ""; });
         toast("Labour rate added");
         reloadPbLabour();
+        return maybeDuplicateToOtherTeam("labour rate", function (team) {
+          return API.post("/api/pricebook/labour", Object.assign({ team: team }, body));
+        });
       }).catch(function () { toast("Could not add labour rate"); });
     });
 
@@ -1625,16 +1747,19 @@
       var bar = document.getElementById("pbFixedAddBar");
       var name = bar.querySelector(".pb-new-service").value.trim();
       if (!name) { toast("Enter a service name"); return; }
-      API.post("/api/pricebook/fixed-services", {
-        team: ACTIVE_TEAM,
+      var body = {
         category: bar.querySelector(".pb-new-cat").value.trim(),
         serviceName: name,
         estimatedCost: bar.querySelector(".pb-new-est-cost").value === "" ? null : +bar.querySelector(".pb-new-est-cost").value,
         standardSell: bar.querySelector(".pb-new-std-sell").value === "" ? null : +bar.querySelector(".pb-new-std-sell").value
-      }).then(function () {
+      };
+      API.post("/api/pricebook/fixed-services", Object.assign({ team: ACTIVE_TEAM }, body)).then(function () {
         bar.querySelectorAll("input").forEach(function (i) { i.value = ""; });
         toast("Fixed service added");
         reloadPbFixed();
+        return maybeDuplicateToOtherTeam("fixed service", function (team) {
+          return API.post("/api/pricebook/fixed-services", Object.assign({ team: team }, body));
+        });
       }).catch(function () { toast("Could not add fixed service"); });
     });
 
@@ -1642,8 +1767,7 @@
       var bar = document.getElementById("pbSuppliersAddBar");
       var name = bar.querySelector(".pb-new-name").value.trim();
       if (!name) { toast("Enter a supplier name"); return; }
-      API.post("/api/pricebook/suppliers", {
-        team: ACTIVE_TEAM,
+      var body = {
         category: bar.querySelector(".pb-new-cat").value.trim(),
         name: name,
         location: bar.querySelector(".pb-new-location").value.trim(),
@@ -1651,11 +1775,15 @@
         email: bar.querySelector(".pb-new-email").value.trim(),
         services: bar.querySelector(".pb-new-services").value.trim(),
         preferred: bar.querySelector(".pb-new-preferred").checked
-      }).then(function () {
+      };
+      API.post("/api/pricebook/suppliers", Object.assign({ team: ACTIVE_TEAM }, body)).then(function () {
         bar.querySelectorAll("input[type=text]").forEach(function (i) { i.value = ""; });
         bar.querySelector(".pb-new-preferred").checked = false;
         toast("Supplier added");
         reloadPbSuppliers();
+        return maybeDuplicateToOtherTeam("supplier", function (team) {
+          return API.post("/api/pricebook/suppliers", Object.assign({ team: team }, body));
+        });
       }).catch(function () { toast("Could not add supplier"); });
     });
 
@@ -1663,7 +1791,7 @@
       var card = document.getElementById("pbContractorsAddCard");
       var name = card.querySelector(".pb-new-name").value.trim();
       if (!name) { toast("Enter a contractor name"); return; }
-      API.post("/api/pricebook/contractors", {
+      var body = {
         category: card.querySelector(".pb-new-cat").value.trim(),
         name: name,
         location: card.querySelector(".pb-new-location").value.trim(),
@@ -1672,11 +1800,15 @@
         services: card.querySelector(".pb-new-services").value.trim(),
         notes: card.querySelector(".pb-new-notes").value.trim(),
         preferred: card.querySelector(".pb-new-preferred").checked
-      }).then(function () {
+      };
+      API.post("/api/pricebook/contractors", Object.assign({ team: ACTIVE_TEAM }, body)).then(function () {
         card.querySelectorAll("input[type=text]").forEach(function (i) { i.value = ""; });
         card.querySelector(".pb-new-preferred").checked = false;
         toast("Contractor added — open it to add rate-card rows");
         reloadPbContractors();
+        return maybeDuplicateToOtherTeam("contractor", function (team) {
+          return API.post("/api/pricebook/contractors", Object.assign({ team: team }, body));
+        });
       }).catch(function () { toast("Could not add contractor"); });
     });
   }
@@ -1884,7 +2016,7 @@
   // HOME
   // ==================================================================
   function loadHome() {
-    API.get("/api/dashboard").then(function (d) {
+    API.get("/api/dashboard" + pbTeamQuery()).then(function (d) {
       renderHomeStats(d.stats);
       renderApprovalList(d.approvalRequired);
     }).catch(function () { toast("Could not load dashboard"); });
@@ -1942,10 +2074,10 @@
   function loadRecentQuotes() {
     var q = document.getElementById("recentSearch").value.trim();
     var status = document.getElementById("recentStatusFilter").value;
-    var params = [];
+    var params = ["team=" + encodeURIComponent(ACTIVE_TEAM)];
     if (q) params.push("q=" + encodeURIComponent(q));
     if (status) params.push("status=" + encodeURIComponent(status));
-    API.get("/api/quotes" + (params.length ? "?" + params.join("&") : "")).then(function (d) {
+    API.get("/api/quotes?" + params.join("&")).then(function (d) {
       renderRecentQuotes(d.quotes.slice(0, 10));
     }).catch(function () { toast("Could not load recent quotes"); });
   }
@@ -2030,6 +2162,7 @@
 
   function loadSaved() {
     var params = new URLSearchParams();
+    params.set("team", ACTIVE_TEAM);
     var from = document.getElementById("filterFrom").value;
     var to = document.getElementById("filterTo").value;
     var status = document.getElementById("filterStatus").value;
@@ -2819,26 +2952,65 @@
     return vals.some(function (v) { return v != null; }) ? vals : null;
   }
 
+  // Same call-out counts and per-tier highlight bullets as amc_proposal.py's
+  // callouts_for()/card_highlights() - mirrored here for the same reason as
+  // the pricing math above: only for this live preview, the server always
+  // recomputes independently when the PDF is actually generated.
+  function apCalloutsFor(propertyType) {
+    if (propertyType === "commercial") return { basic: 12, standard: 24 };
+    if (propertyType === "villa") return { basic: 6, standard: 12 };
+    return { basic: 8, standard: 12 };
+  }
+
+  function apCardHighlights(propertyType) {
+    var co = apCalloutsFor(propertyType);
+    var ct = [co.basic + " call-outs a year", co.standard + " call-outs a year", "Unlimited call-outs"];
+    return [
+      [["2 AC PPM visits per unit", false], [ct[0], false], ["2 plumbing + 2 electrical PPM visits", false],
+       ["Parts not included", true], ["No free handyman hours", true]],
+      [["3 AC PPM visits per unit", false], [ct[1], false], ["3 plumbing + 3 electrical PPM visits", false],
+       ["Parts covered up to AED 50 a visit", false], ["1 free handyman hour", false]],
+      [["4 AC PPM visits per unit", false], [ct[2], false], ["4 plumbing + 4 electrical PPM visits", false],
+       ["Parts covered up to AED 150 a visit", false], ["2 free handyman hours", false]]
+    ];
+  }
+
   function apRenderPreview() {
     if (!AP_META) return;
     var type = document.getElementById("apPropType").value;
     var units = parseInt(document.getElementById("apAcUnits").value, 10);
     if (!units) return;
     var prices = apPriceFor(type, units, apReadOverride());
+    var highlightsByTier = apCardHighlights(type);
     var html = AP_META.tiers.map(function (tier, i) {
       var annual = prices[i];
       var perDay = annual / 365;
       var plan = apMonthlyPlan(annual);
       var flagged = i === 1;
-      return '<div class="card' + (flagged ? " flag" : "") + '" style="margin:0">' +
-        '<div style="padding:10px 12px;background:' + (flagged ? "var(--orange)" : "var(--navy)") + ';color:#fff;border-radius:8px 8px 0 0">' +
-          '<div style="font-weight:700;font-size:16px">' + tier + "</div></div>" +
-        '<div style="padding:12px">' +
-          '<div style="font-size:22px;font-weight:700;color:' + (flagged ? "var(--orange)" : "var(--navy)") + '">AED ' + Math.round(annual).toLocaleString() + "</div>" +
-          '<div class="hint">per year, incl. VAT &middot; AED ' + perDay.toFixed(2) + "/day</div>" +
-          '<div class="hint" style="margin-top:6px">Or AED ' + plan.deposit.toFixed(2) + " deposit, then AED " + plan.monthly.toFixed(2) + " &times; 11 months</div>" +
-          '<button class="btn ghost btn-sm" style="margin-top:10px;width:100%" data-create-contract="' + i + '">Create Contract &rarr;</button>' +
-        "</div></div>";
+      var tagText = flagged ? "Best value" : AP_META.tags[i];
+      var bulletsHtml = highlightsByTier[i].map(function (h) {
+        return '<div class="ap-card-bullet' + (h[1] ? " off" : "") + '"><span class="ap-card-bullet-dot">&#9679;</span><span>' + escapeHtml(h[0]) + "</span></div>";
+      }).join("");
+      return (
+        '<div class="ap-card' + (flagged ? " flagged" : "") + '">' +
+          '<div class="ap-card-head ' + (flagged ? "orange" : "navy") + '">' +
+            (flagged ? '<span class="ap-card-ribbon">Recommended</span>' : "") +
+            '<div class="ap-card-tier">' + escapeHtml(tier) + "</div>" +
+            '<div class="ap-card-tag">' + escapeHtml(tagText) + "</div>" +
+          "</div>" +
+          '<div class="ap-card-body">' +
+            '<div class="ap-card-price"><span>AED</span> <b>' + Math.round(annual).toLocaleString() + "</b></div>" +
+            '<div class="ap-card-price-note">per year, paid upfront &middot; incl. VAT</div>' +
+            '<div class="ap-card-perday">Works out at <b>AED ' + perDay.toFixed(2) + " a day</b></div>" +
+          "</div>" +
+          '<div class="ap-card-monthly">' +
+            '<div class="ap-card-monthly-label">Or pay monthly</div>' +
+            '<div class="ap-card-monthly-val"><b>AED ' + plan.deposit.toFixed(2) + "</b> deposit, then<br><b>AED " + plan.monthly.toFixed(2) + "</b> &times; 11 months</div>" +
+          "</div>" +
+          '<div class="ap-card-bullets">' + bulletsHtml + "</div>" +
+          '<div class="ap-card-footer"><button class="btn ghost btn-sm" style="width:100%" data-create-contract="' + i + '">Create Contract &rarr;</button></div>' +
+        "</div>"
+      );
     }).join("");
     document.getElementById("apPreviewCards").innerHTML = html;
   }
@@ -2917,8 +3089,38 @@
     apSwitchSubtab("contract");
   }
 
+  // The picker (Basic/Standard/Premium, each priced for the current property
+  // type + AC units) is the actual UI for choosing a package - the hidden
+  // #acPackage select is just where that choice is stored, so acGenerateContract()
+  // and every other existing reader of "acPackage".value keeps working unchanged.
+  function acRenderPackagePicker() {
+    var wrap = document.getElementById("acPackagePicker");
+    if (!wrap || !AP_META) return;
+    var type = document.getElementById("acPropType").value;
+    var units = parseInt(document.getElementById("acAcUnits").value, 10);
+    var current = document.getElementById("acPackage").value;
+    wrap.innerHTML = "";
+    if (!units) return;
+    var prices = apPriceFor(type, units, null);
+    AP_META.tiers.forEach(function (tier, i) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ac-package-option" + (tier === current ? " selected" : "");
+      btn.innerHTML =
+        '<div class="ac-pkg-name">' + escapeHtml(tier) + "</div>" +
+        '<div class="ac-pkg-price">AED ' + Math.round(prices[i]).toLocaleString() + "</div>" +
+        '<div class="ac-pkg-note">per year, incl. VAT</div>';
+      btn.addEventListener("click", function () {
+        document.getElementById("acPackage").value = tier;
+        acUpdateValueHint();
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
   function acUpdateValueHint() {
     if (!AP_META) return;
+    acRenderPackagePicker();
     var type = document.getElementById("acPropType").value;
     var units = parseInt(document.getElementById("acAcUnits").value, 10);
     var hint = document.getElementById("acContractValueHint");

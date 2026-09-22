@@ -347,10 +347,10 @@
             <button class="btn btn-ghost btn-sm" id="btnResetTeamPricebook">Reset This Team to Original</button>
           </div>
 
+          <h3 class="pb-section-title">Materials</h3>
           <div class="pb-search-row">
             <input type="text" id="pbMaterialsSearch" placeholder="Search materials by item, category, brand, model/size...">
           </div>
-          <h3 class="pb-section-title">Materials</h3>
           <div style="overflow-x:auto">
             <table id="pbMaterialsTable">
               <thead><tr><th>Category</th><th>Item</th><th>Brand</th><th>Model / Size</th><th>Unit</th><th class="num">Cost</th><th class="num">Default Sell</th><th>Supplier</th><th>Last Updated</th><th></th></tr></thead>
@@ -369,10 +369,10 @@
             <button class="btn btn-orange btn-sm" id="pbAddMaterialBtn">+ Add Material</button>
           </div>
 
-          <div class="pb-search-row" style="margin-top:26px">
+          <h3 class="pb-section-title" style="margin-top:26px">Labour</h3>
+          <div class="pb-search-row">
             <input type="text" id="pbLabourSearch" placeholder="Search labour roles...">
           </div>
-          <h3 class="pb-section-title">Labour</h3>
           <div style="overflow-x:auto">
             <table id="pbLabourTable">
               <thead><tr><th>Role</th><th>Type</th><th class="num">Cost</th><th class="num">Default Sell</th><th>Unit</th><th>Last Updated</th><th></th></tr></thead>
@@ -388,10 +388,10 @@
             <button class="btn btn-orange btn-sm" id="pbAddLabourBtn">+ Add Labour</button>
           </div>
 
-          <div class="pb-search-row" style="margin-top:26px">
+          <h3 class="pb-section-title" style="margin-top:26px">Fixed Services</h3>
+          <div class="pb-search-row">
             <input type="text" id="pbFixedSearch" placeholder="Search fixed services...">
           </div>
-          <h3 class="pb-section-title">Fixed Services</h3>
           <div style="overflow-x:auto">
             <table id="pbFixedTable">
               <thead><tr><th>Category</th><th>Service</th><th class="num">Estimated Cost</th><th class="num">Standard Sell</th><th>Last Updated</th><th></th></tr></thead>
@@ -406,16 +406,13 @@
             <button class="btn btn-orange btn-sm" id="pbAddFixedBtn">+ Add Fixed Service</button>
           </div>
 
-          <div class="pb-search-row" style="margin-top:26px">
+          <h3 class="pb-section-title" style="margin-top:26px">Suppliers <span class="hint" style="text-transform:none;font-weight:400">— parts &amp; materials vendors for <span id="pbSuppliersTeamLabel">Dubai</span></span></h3>
+          <div class="pb-search-row">
             <input type="text" id="pbSuppliersSearch" placeholder="Search suppliers by name, category, location...">
           </div>
-          <h3 class="pb-section-title">Suppliers <span class="hint" style="text-transform:none;font-weight:400">— parts &amp; materials vendors for <span id="pbSuppliersTeamLabel">Dubai</span></span></h3>
-          <div style="overflow-x:auto">
-            <table id="pbSuppliersTable">
-              <thead><tr><th>Category</th><th>Name</th><th>Location</th><th>Phone</th><th>Email</th><th>Services</th><th>Preferred</th><th></th></tr></thead>
-              <tbody id="pbSuppliersBody"></tbody>
-            </table>
-          </div>
+          <div class="amc-subnav" id="pbSuppliersCategoryPills" style="margin-bottom:10px"></div>
+          <p class="hint" id="pbSuppliersCount" style="margin-bottom:12px"></p>
+          <div id="pbSuppliersCardGrid" class="supplier-grid"></div>
           <div class="addbar no-print admin-only" id="pbSuppliersAddBar" style="display:none">
             <input type="text" class="pb-new-cat" placeholder="Category" style="max-width:160px">
             <input type="text" class="pb-new-name" placeholder="Supplier name" style="flex:1">
@@ -429,11 +426,11 @@
             <button class="btn btn-orange btn-sm" id="pbAddSupplierBtn">+ Add Supplier</button>
           </div>
 
-          <div class="pb-search-row" style="margin-top:26px">
+          <h3 class="pb-section-title" style="margin-top:26px">Contractors</h3>
+          <p class="hint" style="margin:-4px 0 12px">Subcontractors who bill the client directly.</p>
+          <div class="pb-search-row">
             <input type="text" id="pbContractorsSearch" placeholder="Search contractors by name, category, services...">
           </div>
-          <h3 class="pb-section-title">Contractors</h3>
-          <p class="hint" style="margin:-4px 0 12px">Subcontractors who bill the client directly — global across both locations, since one may serve either team.</p>
           <div id="pbContractorsList"></div>
           <div class="admin-only" id="pbContractorsAddCard" style="display:none;margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:14px 16px;">
             <p class="section-label" style="margin-bottom:10px">Add Contractor</p>
@@ -830,13 +827,6 @@
                 </select>
               </div>
               <div class="field"><label>AC units</label><select id="acAcUnits"></select></div>
-              <div class="field"><label>Package</label>
-                <select id="acPackage">
-                  <option value="Basic">Basic</option>
-                  <option value="Standard">Standard</option>
-                  <option value="Premium">Premium</option>
-                </select>
-              </div>
               <div class="field"><label>Payment plan</label>
                 <select id="acPayPlan">
                   <option value="onetime">One-Time Payment</option>
@@ -851,6 +841,15 @@
                   <option value="govind">Govind Singh Rawat</option>
                 </select>
               </div>
+            </div>
+            <select id="acPackage" style="display:none">
+              <option value="Basic">Basic</option>
+              <option value="Standard">Standard</option>
+              <option value="Premium">Premium</option>
+            </select>
+            <div class="field" style="margin-top:12px">
+              <label>Package — pick which one the client agreed to</label>
+              <div class="ac-package-picker" id="acPackagePicker"></div>
             </div>
             <div class="hint" id="acContractValueHint" style="margin-top:10px"></div>
             <div class="amc-form-errors" id="acFormErrors" style="display:none"></div>

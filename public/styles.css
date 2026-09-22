@@ -305,6 +305,60 @@ summary{cursor:pointer;font-size:12px;color:var(--blue);font-weight:600;padding:
 .contractor-pricing-actions{display:flex;gap:4px;flex:0 0 auto;}
 .contractor-pricing-add{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
 
+/* ---- Suppliers (category-pill filtered card grid) ---- */
+.supplier-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
+.supplier-card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff;}
+.supplier-card.preferred{border-color:var(--orange);}
+.supplier-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;}
+.supplier-name{font-size:14.5px;font-weight:700;color:var(--ink);}
+.supplier-loc{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.supplier-services{font-size:12.5px;color:var(--ink);margin:8px 0;line-height:1.5;}
+.supplier-contacts{display:flex;gap:10px;flex-wrap:wrap;}
+.supplier-contacts a{font-size:12px;color:var(--blue);text-decoration:none;}
+.supplier-contacts a:hover{text-decoration:underline;}
+.supplier-actions{display:flex;gap:6px;flex:0 0 auto;}
+.supplier-card-editing{grid-column:1 / -1;}
+.supplier-edit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;}
+.supplier-edit-grid input{width:100%;}
+.supplier-edit-preferred{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink);font-size:13px;margin-top:10px;}
+.supplier-edit-preferred input{width:16px;height:16px;}
+.supplier-edit-actions{display:flex;gap:8px;margin-top:12px;}
+
+/* ---- AMC Proposal live preview cards (mirrors the PDF's package card design) ---- */
+.ap-card{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column;}
+.ap-card.flagged{border-color:var(--orange);border-width:1.5px;}
+.ap-card-head{padding:14px 16px;position:relative;}
+.ap-card-head.navy{background:var(--navy);}
+.ap-card-head.orange{background:var(--orange);}
+.ap-card-tier{color:#fff;font-size:18px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;}
+.ap-card-tag{color:rgba(255,255,255,.85);font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;margin-top:2px;}
+.ap-card-ribbon{position:absolute;top:12px;right:14px;background:rgba(255,255,255,.22);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:3px 9px;border-radius:5px;}
+.ap-card-body{padding:16px;border-bottom:1px solid var(--soft);}
+.ap-card-price{font-size:13px;color:var(--muted);}
+.ap-card-price b{font-size:28px;color:var(--ink);font-weight:800;}
+.ap-card.flagged .ap-card-price b{color:var(--orange);}
+.ap-card-price-note{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.ap-card-perday{margin-top:10px;background:var(--soft);border-left:3px solid var(--orange);border-radius:4px;padding:7px 10px;font-size:12px;color:var(--ink);}
+.ap-card-monthly{background:var(--soft);padding:12px 16px;border-bottom:1px solid var(--line);}
+.ap-card-monthly-label{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);}
+.ap-card-monthly-val{font-size:13px;color:var(--ink);margin-top:4px;line-height:1.4;}
+.ap-card-bullets{padding:14px 16px;flex:1;}
+.ap-card-bullet{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--ink);padding:4px 0;line-height:1.4;}
+.ap-card-bullet.off{color:var(--muted);}
+.ap-card-bullet-dot{color:var(--orange);flex:0 0 auto;margin-top:2px;font-size:9px;}
+.ap-card-bullet.off .ap-card-bullet-dot{color:#C9D0DB;}
+.ap-card-footer{padding:0 16px 16px;}
+
+/* ---- Contract Builder's package picker (Basic/Standard/Premium, priced) ---- */
+.ac-package-picker{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;}
+.ac-package-option{flex:1;min-width:150px;border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;text-align:left;font-family:inherit;}
+.ac-package-option:hover{border-color:var(--navy);}
+.ac-package-option.selected{border-color:var(--orange);background:#FFF6F0;}
+.ac-pkg-name{font-weight:800;font-size:12.5px;color:var(--ink);text-transform:uppercase;letter-spacing:.3px;}
+.ac-pkg-price{font-size:19px;font-weight:800;color:var(--navy);margin-top:4px;}
+.ac-package-option.selected .ac-pkg-price{color:var(--orange);}
+.ac-pkg-note{font-size:11px;color:var(--muted);margin-top:2px;}
+
 .item-kind-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:3px 8px;border-radius:6px;background:var(--soft);color:var(--navy);white-space:nowrap;}
 td.markup-cell input{width:64px;}
 

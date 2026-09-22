@@ -176,10 +176,12 @@ SEED_SUBCONTRACTORS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Seed data: Suppliers (parts/materials vendors, team-scoped) and Contractors
-# (subcontractors who bill the client directly, global across teams), ported
-# from the standalone "Handyman.ae Quote Builder & Price List" master file.
+# Seed data: Suppliers (parts/materials vendors, team-scoped), ported from
+# the standalone "Handyman.ae Quote Builder & Price List" master file.
 # Each row is [team, category, name, location, phone, email, services, preferred].
+# Contractors (below, SEED_CONTRACTORS) are also team-scoped but have no
+# `team` column in their own seed rows - every seeded contractor defaults to
+# 'dubai' on insert, same convention as every other pre-team-column catalog.
 # ---------------------------------------------------------------------------
 SEED_SUPPLIERS = json.loads(r'''
 [["dubai","HVAC / Air Conditioning","Daikin","Al Quoz","","","Split AC units, VRF systems, chillers, original spare parts",false],["dubai","HVAC / Air Conditioning","Marhaba (Veto)","Satwa","","","HVAC consumables, AC accessories, insulation, ducting items, tapes, fittings",false],["dubai","HVAC / Air Conditioning","Instacool (Samsung)","Al Barsha","","","Samsung split ACs, VRF systems, commercial AC solutions",false],["dubai","HVAC / Air Conditioning","Hamad Saeed (AC Shop)","Satwa","","","AC spare parts, compressors, motors, capacitors, refrigerant gas, HVAC materials",false],["dubai","HVAC / Air Conditioning","SKM Aircond","Sharjah","","","AHUs, FCUs, chillers, custom HVAC systems",false],["dubai","HVAC / Air Conditioning","MAH (AC)","Al Quoz","","","Copper pipes, insulation, refrigerants, AC fittings and accessories",false],["dubai","HVAC / Air Conditioning","Hollywood AC","Deira","","","AC spare parts, motors, blowers, HVAC consumables",false],["dubai","HVAC / Air Conditioning","Taqeef (O'General / Midea)","Ajman","","","O'General & Midea split units, VRF systems, AC spare parts",false],["dubai","HVAC / Air Conditioning","Skylight (AC)","Al Quoz","058 101 3083","","AC spare parts, VRF accessories, HVAC consumables",false],["dubai","HVAC / Air Conditioning","GulfSail (York)","Deira","","","York chillers, VRF systems, HVAC equipment",false],["dubai","HVAC / Air Conditioning","Juma Al Majid (Trane)","Ras Al Khor","","","Trane chillers, VRF systems, commercial HVAC equipment",false],["dubai","HVAC / Air Conditioning","York","Deira","","","HVAC systems, chillers, VRF units and spare parts",false],["dubai","HVAC / Air Conditioning","Invertex (Samsung)","Office BC3-10 AB Building, Al Barsha 1","050 555 2905","info@invertex.ae","AC Inverter Samsung. Alt contact: Mahy Khoory — 04 606 7300 / 050 678 7253",false],["dubai","Ducting / Insulation / HVAC Fabrication","Al Waseef","Al Quoz","","","Ducting materials, HVAC accessories, insulation products",false],["dubai","Ducting / Insulation / HVAC Fabrication","Starwell","Al Quoz","","","Insulation materials, HVAC accessories, MEP consumables",false],["dubai","Ducting / Insulation / HVAC Fabrication","EICG","Al Quoz","","","GI ducting, insulation materials, duct accessories, dampers",false],["dubai","Electrical & Lighting","Golden Way Electrical","Al Quoz","+971 50 280 5615 / +971 50 221 9826","sales@goldenwayelectrical.com","Electrical, Sanitary, Hardware, Tools & Air Conditioning. Cables, breakers, conduits, switches, consumables",false],["dubai","Electrical & Lighting","Legrand","Deira","","","Switchgear, sockets, distribution boards, smart systems",false],["dubai","Electrical & Lighting","Autolighting (Electrical)","Al Quoz","","","Indoor & outdoor lighting fixtures, electrical accessories",false],["dubai","Electrical & Lighting","BNT","Deira","","","Electrical & MEP consumables and fittings",false],["dubai","Electrical & Lighting","Soft Fixing","Al Quoz","","","Switches, sockets, lighting accessories, wiring devices",false],["dubai","Electrical & Lighting","Al Yousuf LG","Al Qusais","","","LG AC systems, appliances, electrical solutions",false],["dubai","Electrical & Lighting","Fanoos Lighting","Deira","","","Decorative and commercial lighting fixtures",false],["dubai","Electrical & Lighting","Sparks Electrical – Ariston","Al Quoz","","","Electrical supplies, Ariston water heaters",false],["dubai","Electrical & Lighting","Kepco (Electrical)","Deira","","","Electrical cables, breakers, panels, industrial materials",false],["dubai","Electrical & Lighting","Nasa Electricals","Deira","","","Electrical materials, cables, fittings",false],["dubai","Electrical & Lighting","Fortune SHJ (LG)","Sharjah","","","LG air conditioning systems and appliances",false],["dubai","Electrical & Lighting","Electrical Lighting","Deira","","","Lighting fixtures and electrical accessories",false],["dubai","Electrical & Lighting","Suroor Al Madena","Deira","","","Electrical, HVAC & plumbing consumables (general supplier)",false],["dubai","Plumbing / Sanitary / Water Systems","Ariston Middle East","Ras Al Khor","","","Water heaters, boilers, hot water systems",false],["dubai","Plumbing / Sanitary / Water Systems","Mahy Khoory (Grundfos)","Deira","","","Grundfos pumps, booster sets, water pressure systems",false],["dubai","Plumbing / Sanitary / Water Systems","Al Shamsi (Roca)","Ras Al Khor","","","Roca sanitary ware, basins, toilets, mixers, bathroom fittings",false],["dubai","Plumbing / Sanitary / Water Systems","Safinat Alsalam (Sanit Flush Mech)","Al Ameer Tower, Al Nahda, Sharjah","04 269 5529 / +971 50 650 8079","sales@safinathtrading.com","Sanit flush mechanisms",false],["dubai","Plumbing / Sanitary / Water Systems","Abu Saeed","Deira","","","Plumbing materials, pipes, valves, fittings",false],["dubai","Plumbing / Sanitary / Water Systems","Thermea (Solar w/ Spare)","Ras Al Khor","","","Solar water heaters, hot water systems, spare parts",false],["dubai","Plumbing / Sanitary / Water Systems","Leminar","Deira","","","Sanitary ware, bathroom fittings, accessories",false],["dubai","Plumbing / Sanitary / Water Systems","Faraidoni (Grohe / Geberit)","Deira","","","Grohe mixers, Geberit concealed tanks, premium fittings",false],["dubai","Plumbing / Sanitary / Water Systems","Challenger Booster Pumps","","058 892 4491","","Booster pumps",false],["dubai","Plumbing / Sanitary / Water Systems","Terry Glass (Sanit)","","058 910 8273","","Sanit products",false],["dubai","Building Materials / Miscellaneous","Sunrise Oasis – ONLY lights","Al Quoz","","","MEP supplies, fixtures and fittings",false],["dubai","Building Materials / Miscellaneous","Smooth Solution (Jotun)","Al Quoz","052 911 2600","","Jotun paints, coatings, finishing materials",false],["dubai","Building Materials / Miscellaneous","ALQZ Building Materials","Al Quoz","","","General building materials, MEP consumables",false],["dubai","Building Materials / Miscellaneous","Royal Apex (Midhun)","Al Quoz Industrial 3, Dubai","054 407 4209","info@royalapexuae.com","Authorized dealer for Legrand, Schneider, Honeywell, Siemens. Electrical hardware, HVAC & plumbing raw materials, building materials, safety products (3,800+ brands stocked)",false],["dubai","Building Materials / Miscellaneous","Mega City Building Materials (Aby)","Al Quoz Industrial Area 3, Dubai","055 210 1359","","Building materials, fitting & assembly tools, locks/ironware, electrical products",false],["dubai","Building Materials / Miscellaneous","Gratis Building & Construction Materials Trading LLC (Swalih)","","056 294 2262","","Building & construction materials",false]]
@@ -364,21 +366,27 @@ def get_conn():
     return PGConnection(raw)
 
 
-def next_quote_seq(conn):
-    """Allocate the next sequential quote number atomically. A single
-    UPDATE ... RETURNING takes Postgres's row-level lock on the counters
-    row implicitly, so two threads can't both read the same counter value
+QUOTE_NO_PREFIX = {"dubai": "QB-DXB", "magcity": "QB-MAG"}
+
+
+def next_quote_seq(conn, team):
+    """Allocate the next sequential quote number atomically, per team - Dubai
+    and MAG City each have their own counter row (quote_no_dubai /
+    quote_no_magcity) so their quote numbers count up independently. A
+    single UPDATE ... RETURNING takes Postgres's row-level lock on that
+    counter row implicitly, so two threads can't both read the same value
     before either writes it back - no explicit BEGIN IMMEDIATE needed
     (that was SQLite's way of getting the same guarantee)."""
+    counter_name = "quote_no_" + team
     seq = conn.execute(
-        "UPDATE counters SET value = value + 1 WHERE name = 'quote_no' RETURNING value"
+        "UPDATE counters SET value = value + 1 WHERE name = ? RETURNING value", (counter_name,)
     ).fetchone()["value"]
     conn.commit()
     return seq
 
 
-def format_quote_no(seq):
-    return "QB-%06d" % seq
+def format_quote_no(seq, team):
+    return "%s-%06d" % (QUOTE_NO_PREFIX.get(team, "QB-DXB"), seq)
 
 
 def init_db():
@@ -460,7 +468,8 @@ def init_db():
             internal_notes TEXT,
             technician TEXT,
             prepared_by_email TEXT,
-            markup_pct DOUBLE PRECISION
+            markup_pct DOUBLE PRECISION,
+            team TEXT NOT NULL DEFAULT 'dubai' CHECK(team IN ('dubai','magcity'))
         );
         CREATE TABLE IF NOT EXISTS quote_items (
             id SERIAL PRIMARY KEY,
@@ -586,6 +595,7 @@ def init_db():
         );
         CREATE TABLE IF NOT EXISTS pb_contractors (
             id TEXT PRIMARY KEY,
+            team TEXT NOT NULL DEFAULT 'dubai' CHECK(team IN ('dubai','magcity')),
             category TEXT,
             name TEXT NOT NULL,
             location TEXT,
@@ -726,10 +736,39 @@ def init_db():
     )
     conn.commit()
 
-    # migration: sequential quote numbering. The counters row is created once;
-    # quote_no allocation always goes through next_quote_seq() from here on.
-    if not conn.execute("SELECT 1 FROM counters WHERE name='quote_no'").fetchone():
-        conn.execute("INSERT INTO counters (name, value) VALUES ('quote_no', 0)")
+    # migration: sequential quote numbering, one counter per team. A database
+    # that still has the old single 'quote_no' counter (from before Dubai and
+    # MAG City got separate sequences) carries its value forward into
+    # quote_no_dubai, so existing quote numbers never collide with new ones;
+    # quote_no_magcity always starts fresh since MAG City had no quotes yet.
+    if not conn.execute("SELECT 1 FROM counters WHERE name='quote_no_dubai'").fetchone():
+        old = conn.execute("SELECT value FROM counters WHERE name='quote_no'").fetchone()
+        conn.execute("INSERT INTO counters (name, value) VALUES ('quote_no_dubai', ?)", (old["value"] if old else 0,))
+        conn.commit()
+    if not conn.execute("SELECT 1 FROM counters WHERE name='quote_no_magcity'").fetchone():
+        conn.execute("INSERT INTO counters (name, value) VALUES ('quote_no_magcity', 0)")
+        conn.commit()
+
+    # migration: a database provisioned before Dubai/MAG City separation
+    # won't have `team` on `quotes` or `pb_contractors` yet (both are already
+    # in the CREATE TABLE above for a fresh database, so this is a no-op
+    # there). ADD COLUMN ... DEFAULT 'dubai' backfills every existing row to
+    # Dubai in one statement - consistent with how every other team-scoped
+    # table was migrated (materials/labour/fixed-services), since Dubai was
+    # always the original, sole office before MAG City existed.
+    def _has_column(table, column):
+        return bool(conn.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_name=? AND column_name=?",
+            (table, column),
+        ).fetchone())
+
+    if not _has_column("quotes", "team"):
+        conn.execute("ALTER TABLE quotes ADD COLUMN team TEXT NOT NULL DEFAULT 'dubai'")
+        conn.execute("ALTER TABLE quotes ADD CONSTRAINT quotes_team_check CHECK (team IN ('dubai','magcity'))")
+        conn.commit()
+    if not _has_column("pb_contractors", "team"):
+        conn.execute("ALTER TABLE pb_contractors ADD COLUMN team TEXT NOT NULL DEFAULT 'dubai'")
+        conn.execute("ALTER TABLE pb_contractors ADD CONSTRAINT pb_contractors_team_check CHECK (team IN ('dubai','magcity'))")
         conn.commit()
 
     seeded = cur.execute("SELECT COUNT(*) AS c FROM categories").fetchone()["c"]
@@ -810,9 +849,12 @@ def init_db():
         insert_seed_suppliers(conn, "magcity")
         conn.commit()
 
-    # migration: seed Contractors (global subcontractors who bill the client
+    # migration: seed Contractors (subcontractors who bill the client
     # directly, each with its own nested rate-card) from the standalone
-    # master file, one-time on an empty table.
+    # master file, one-time on an empty table. team isn't in this INSERT's
+    # column list, so every seeded contractor gets the table's DEFAULT
+    # 'dubai' - MAG City starts with an empty Contractors list, same as
+    # every other team-scoped catalog.
     if not conn.execute("SELECT 1 FROM pb_contractors LIMIT 1").fetchone():
         ts = now_iso()
         for category, name, location, phone, email, services, preferred, pricing_note, pricing in SEED_CONTRACTORS:
@@ -1094,7 +1136,7 @@ def quote_row_to_dict(row, items=None):
         "markupPct": row["markup_pct"], "marginPct": row["margin_pct"], "marginBand": row["margin_band"],
         "vatAmount": row["vat_amount"], "grandTotal": row["grand_total"],
         "createdAt": row["created_at"], "updatedAt": row["updated_at"],
-        "createdBy": row["created_by_email"],
+        "createdBy": row["created_by_email"], "team": row["team"],
     }
     if items is not None:
         d["items"] = [{
@@ -1232,11 +1274,12 @@ def save_quote(payload, existing_id=None, created_by_email=None):
         cur.execute("DELETE FROM quote_items WHERE quote_id=?", (quote_id,))
         event_type = "update"
     else:
-        seq = next_quote_seq(conn)
-        quote_no = format_quote_no(seq)
+        team = payload.get("team") if payload.get("team") in ("dubai", "magcity") else "dubai"
+        seq = next_quote_seq(conn, team)
+        quote_no = format_quote_no(seq, team)
         insert_cols = ["id", "quote_no", "quote_seq", "root_quote_id", "revision_number",
-                       "prepared_by_email"] + field_cols + ["created_by_email", "created_at", "updated_at"]
-        insert_values = (quote_id, quote_no, seq, quote_id, 1, created_by_email) + fields + (created_by_email, ts, ts)
+                       "prepared_by_email", "team"] + field_cols + ["created_by_email", "created_at", "updated_at"]
+        insert_values = (quote_id, quote_no, seq, quote_id, 1, created_by_email, team) + fields + (created_by_email, ts, ts)
         placeholders = ",".join(["?"] * len(insert_cols))
         cur.execute(f"INSERT INTO quotes ({','.join(insert_cols)}) VALUES ({placeholders})", insert_values)
         event_type = "create"
@@ -1546,8 +1589,8 @@ def update_subcategory(sub_id, body):
 
 def list_quotes(query):
     conn = get_conn()
-    sql = "SELECT * FROM quotes WHERE 1=1"
-    params = []
+    sql = "SELECT * FROM quotes WHERE team=?"
+    params = [query.get("team") or "dubai"]
     if query.get("from"):
         sql += " AND quote_date >= ?"
         params.append(query["from"])
@@ -1711,7 +1754,7 @@ def quote_duplicate(quote_id, user):
 
     new_id = uuid.uuid4().hex
     ts = now_iso()
-    seq = next_quote_seq(conn)
+    seq = next_quote_seq(conn, src["team"])
     cols = [k for k in src.keys() if k not in ("id",)]
     values = [src[c] for c in cols]
     cols += ["id"]
@@ -1721,7 +1764,7 @@ def quote_duplicate(quote_id, user):
     conn.execute(
         "UPDATE quotes SET status='Draft', parent_quote_id=NULL, root_quote_id=?, revision_number=1, quote_seq=?, quote_no=?, "
         "created_at=?, updated_at=?, created_by_email=?, prepared_by_email=? WHERE id=?",
-        (new_id, seq, format_quote_no(seq), ts, ts, user["email"], user["email"], new_id),
+        (new_id, seq, format_quote_no(seq, src["team"]), ts, ts, user["email"], user["email"], new_id),
     )
     for it in src_items:
         conn.execute(
@@ -1740,11 +1783,12 @@ def quote_duplicate(quote_id, user):
 # Dashboard
 # ---------------------------------------------------------------------------
 
-def dashboard_data():
+def dashboard_data(query):
+    team = query.get("team") or "dubai"
     conn = get_conn()
     approval_rows = conn.execute(
         "SELECT id, quote_no, client_name, selling_price, discount_pct, prepared_by_email, created_by_email, created_at "
-        "FROM quotes WHERE status='Approval Required' ORDER BY created_at ASC"
+        "FROM quotes WHERE status='Approval Required' AND team=? ORDER BY created_at ASC", (team,)
     ).fetchall()
 
     def approval_reason(r):
@@ -1764,22 +1808,22 @@ def dashboard_data():
     stats_row = conn.execute(
         "SELECT AVG(markup_pct) AS avg_markup, AVG(margin_pct) AS avg_margin, "
         "SUM(CASE WHEN status='Approval Required' THEN 1 ELSE 0 END) AS awaiting "
-        "FROM quotes WHERE status IN ('Approval Required','Sent to Jobber')"
+        "FROM quotes WHERE status IN ('Approval Required','Sent to Jobber') AND team=?", (team,)
     ).fetchone()
     item_count = (
-        conn.execute("SELECT COUNT(*) AS c FROM pb_materials").fetchone()["c"]
-        + conn.execute("SELECT COUNT(*) AS c FROM pb_labour").fetchone()["c"]
-        + conn.execute("SELECT COUNT(*) AS c FROM pb_fixed_services").fetchone()["c"]
+        conn.execute("SELECT COUNT(*) AS c FROM pb_materials WHERE team=?", (team,)).fetchone()["c"]
+        + conn.execute("SELECT COUNT(*) AS c FROM pb_labour WHERE team=?", (team,)).fetchone()["c"]
+        + conn.execute("SELECT COUNT(*) AS c FROM pb_fixed_services WHERE team=?", (team,)).fetchone()["c"]
     )
 
     month_prefix = time.strftime("%Y-%m")
     quotes_this_month = conn.execute(
-        "SELECT COUNT(*) AS c FROM quotes WHERE created_at LIKE ?", (month_prefix + "%",)
+        "SELECT COUNT(*) AS c FROM quotes WHERE created_at LIKE ? AND team=?", (month_prefix + "%", team)
     ).fetchone()["c"]
     sent_to_jobber_this_month = conn.execute(
-        "SELECT COUNT(*) AS c FROM quotes WHERE status='Sent to Jobber' AND created_at LIKE ?", (month_prefix + "%",)
+        "SELECT COUNT(*) AS c FROM quotes WHERE status='Sent to Jobber' AND created_at LIKE ? AND team=?", (month_prefix + "%", team)
     ).fetchone()["c"]
-    drafts_pending = conn.execute("SELECT COUNT(*) AS c FROM quotes WHERE status='Draft'").fetchone()["c"]
+    drafts_pending = conn.execute("SELECT COUNT(*) AS c FROM quotes WHERE status='Draft' AND team=?", (team,)).fetchone()["c"]
 
     conn.close()
     return json_response(200, {
@@ -1965,10 +2009,10 @@ def update_pb_fixed_service(fid, body):
 
 
 # ---------------------------------------------------------------------------
-# Price Book v2 - Suppliers (parts/materials vendors, team-scoped) and
-# Contractors (subcontractors who bill the client directly - global across
-# teams, since one subcontractor may serve either location, each with its
-# own nested rate-card rows).
+# Price Book v2 - Suppliers and Contractors (parts/materials vendors and
+# subcontractors who bill the client directly). Both are team-scoped, same
+# as Materials/Labour/Fixed Services - Dubai and MAG City each keep their
+# own list, including each contractor's nested rate-card rows.
 # ---------------------------------------------------------------------------
 
 def pb_supplier_to_dict(r):
@@ -2039,7 +2083,7 @@ def pb_contractor_pricing_to_dict(r):
 
 
 def pb_contractor_to_dict(r, pricing_rows):
-    return {"id": r["id"], "category": r["category"], "name": r["name"], "location": r["location"],
+    return {"id": r["id"], "team": r["team"], "category": r["category"], "name": r["name"], "location": r["location"],
             "phone": r["phone"], "email": r["email"], "services": r["services"], "preferred": bool(r["preferred"]),
             "pricingNote": r["pricing_note"], "notes": r["notes"], "lastUpdated": r["last_updated"],
             "pricing": [pb_contractor_pricing_to_dict(p) for p in pricing_rows]}
@@ -2047,8 +2091,8 @@ def pb_contractor_to_dict(r, pricing_rows):
 
 def list_pb_contractors(query):
     conn = get_conn()
-    sql = "SELECT * FROM pb_contractors WHERE 1=1"
-    params = []
+    sql = "SELECT * FROM pb_contractors WHERE team=?"
+    params = [query.get("team") or "dubai"]
     q = query.get("q")
     if q:
         like = "%" + q + "%"
@@ -2071,8 +2115,8 @@ def create_pb_contractor(body):
     cid = uuid.uuid4().hex
     ts = now_iso()
     conn.execute(
-        "INSERT INTO pb_contractors (id, category, name, location, phone, email, services, preferred, pricing_note, notes, last_updated, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        (cid, body.get("category"), body.get("name") or "Untitled", body.get("location"), body.get("phone"),
+        "INSERT INTO pb_contractors (id, team, category, name, location, phone, email, services, preferred, pricing_note, notes, last_updated, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (cid, body.get("team") or "dubai", body.get("category"), body.get("name") or "Untitled", body.get("location"), body.get("phone"),
          body.get("email"), body.get("services"), 1 if body.get("preferred") else 0, body.get("pricingNote"),
          body.get("notes"), ts, ts),
     )
@@ -2090,8 +2134,8 @@ def update_pb_contractor(cid, body):
         return json_response(404, {"error": "not found"})
     preferred = body.get("preferred", bool(row["preferred"]))
     conn.execute(
-        "UPDATE pb_contractors SET category=?, name=?, location=?, phone=?, email=?, services=?, preferred=?, pricing_note=?, notes=?, last_updated=? WHERE id=?",
-        (body.get("category", row["category"]), body.get("name", row["name"]), body.get("location", row["location"]),
+        "UPDATE pb_contractors SET team=?, category=?, name=?, location=?, phone=?, email=?, services=?, preferred=?, pricing_note=?, notes=?, last_updated=? WHERE id=?",
+        (body.get("team", row["team"]), body.get("category", row["category"]), body.get("name", row["name"]), body.get("location", row["location"]),
          body.get("phone", row["phone"]), body.get("email", row["email"]), body.get("services", row["services"]),
          1 if preferred else 0, body.get("pricingNote", row["pricing_note"]), body.get("notes", row["notes"]),
          now_iso(), cid),
@@ -2609,7 +2653,8 @@ def reset_pricebook_team(team):
     """Admin 'Reset This Team to Original': wipes this team's Materials,
     Labour, Fixed Services and Suppliers, then reseeds from the same
     constants init_db() uses on a fresh install. Contractors are untouched -
-    they're global, not team-scoped, so "this team" doesn't apply to them."""
+    there's no seed data for them to reset back to (they're user-entered
+    from the start), even though they're team-scoped like everything else."""
     if team not in ("dubai", "magcity"):
         return json_response(400, {"error": "team must be 'dubai' or 'magcity'"})
     conn = get_conn()
@@ -2627,8 +2672,8 @@ def reset_pricebook_team(team):
 
 
 def export_pricebook(query):
-    """Admin 'Export Price Book (JSON)': everything for one team (Materials/
-    Labour/Fixed Services/Suppliers) plus Contractors, which are global."""
+    """Admin 'Export Price Book (JSON)': everything for one team - Materials,
+    Labour, Fixed Services, Suppliers and Contractors are all team-scoped."""
     team = query.get("team") or "dubai"
     if team not in ("dubai", "magcity"):
         return json_response(400, {"error": "team must be 'dubai' or 'magcity'"})
@@ -2637,7 +2682,7 @@ def export_pricebook(query):
     labour = conn.execute("SELECT * FROM pb_labour WHERE team=? ORDER BY role_name", (team,)).fetchall()
     fixed = conn.execute("SELECT * FROM pb_fixed_services WHERE team=? ORDER BY category, service_name", (team,)).fetchall()
     suppliers = conn.execute("SELECT * FROM pb_suppliers WHERE team=? ORDER BY category, name", (team,)).fetchall()
-    contractor_rows = conn.execute("SELECT * FROM pb_contractors ORDER BY category, name").fetchall()
+    contractor_rows = conn.execute("SELECT * FROM pb_contractors WHERE team=? ORDER BY category, name", (team,)).fetchall()
     contractors = []
     for r in contractor_rows:
         pricing_rows = conn.execute(
@@ -2891,7 +2936,7 @@ def handle_get(environ, path, query):
         if path == "/api/settings":
             return json_response(200, get_effective_settings())
         if path == "/api/dashboard":
-            return dashboard_data()
+            return dashboard_data(query)
         if path == "/api/quotes":
             return list_quotes(query)
         if path == "/api/quotes/autocomplete":
