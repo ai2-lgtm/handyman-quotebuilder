@@ -8,487 +8,891 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="wrap">
+<div class="app-shell">
 
-  <div class="brandbar">
-    <div class="logo"></div>
-    <div class="brandtext">
-      <h1>Handyman.ae</h1>
-      <p>GIJO Technical Services LLC · Quoting &amp; Estimating</p>
-    </div>
-    <div class="user-info no-print">
-      <span id="currentUserEmail"></span>
-      <span class="role-badge" id="currentUserRole" style="display:none"></span>
-      <button class="btn btn-ghost btn-sm" id="btnLogout" type="button">Log Out</button>
-    </div>
-  </div>
-
-  <nav class="tabs no-print" id="tabs">
-    <button class="tab active" data-tab="home">Overview</button>
-    <button class="tab" data-tab="builder">Quote Builder</button>
-    <button class="tab" data-tab="saved">Saved Quotes</button>
-    <button class="tab admin-only" data-tab="pricebook" style="display:none">Price Book</button>
-    <button class="tab" data-tab="templates">Templates</button>
-  </nav>
-
-  <!-- ============================ HOME / OVERVIEW ============================ -->
-  <section id="tab-home" class="tabpanel">
-    <div class="card">
-      <div class="actions" style="margin:0 0 18px;align-items:center">
-        <h2 class="plain" style="margin:0;margin-right:auto">Overview</h2>
-        <button class="btn btn-orange" id="homeNewQuote">+ New Quote</button>
-      </div>
-      <div class="addbar" style="margin:0 0 14px">
-        <input type="text" id="homePriceSearch" placeholder="Search Price Book (materials, labour, fixed services)...">
-        <button class="btn btn-ghost btn-sm" id="homeSearchClose" type="button" style="display:none">Close ✕</button>
-      </div>
-      <div id="homeSearchResults"></div>
-    </div>
-
-    <div class="grid cols4" id="homeStats" style="margin-bottom:16px">
-      <div class="card stat-card"><div class="stat-lbl">Quotes This Month</div><div class="stat-val" id="statQuotesThisMonth">—</div></div>
-      <div class="card stat-card"><div class="stat-lbl">Sent to Jobber</div><div class="stat-val" id="statSentToJobber">—</div></div>
-      <div class="card stat-card"><div class="stat-lbl">Drafts Pending</div><div class="stat-val" id="statDraftsPending">—</div></div>
-      <div class="card stat-card stat-card-amber"><div class="stat-lbl">Pending Approval</div><div class="stat-val" id="statAwaiting">—</div></div>
-    </div>
-
-    <div class="grid cols3" id="homeStatsSecondary" style="margin-bottom:16px">
-      <div class="card stat-card"><div class="stat-lbl">Average Mark-up</div><div class="stat-val" id="statAvgMarkup">—</div></div>
-      <div class="card stat-card"><div class="stat-lbl">Average Gross Margin</div><div class="stat-val" id="statAvgMargin">—</div></div>
-      <div class="card stat-card"><div class="stat-lbl">Price Book Items</div><div class="stat-val" id="statItemCount">—</div></div>
-    </div>
-
-    <div class="card">
-      <h2>Needs Your Approval</h2>
-      <p class="hint" style="margin-bottom:12px">Quotes over AED 2,000 (or with a heavy discount) waiting for an admin to check before they can be sent to Jobber.</p>
-      <div style="overflow-x:auto">
-        <table id="approvalTable">
-          <thead><tr><th>Quote No.</th><th>Client</th><th>Reason</th><th class="num">Value</th><th>Prepared By</th><th style="width:170px"></th></tr></thead>
-          <tbody id="approvalBody"></tbody>
-        </table>
-      </div>
-      <p class="hint" id="approvalEmpty" style="display:none">Nothing waiting on approval right now.</p>
-    </div>
-
-    <div class="card">
-      <h2>Recent Quotes</h2>
-      <div class="grid cols4" style="align-items:end;margin-bottom:12px">
-        <div style="grid-column:1/3"><label>Search (client / quote no.)</label><input type="text" id="recentSearch" placeholder="Type to search..."></div>
-        <div>
-          <label>Status</label>
-          <select id="recentStatusFilter">
-            <option value="">All statuses</option>
-            <option value="Draft">Draft</option>
-            <option value="Approval Required">Approval Required</option>
-            <option value="Sent to Jobber">Sent to Jobber</option>
-          </select>
-        </div>
-      </div>
-      <div style="overflow-x:auto">
-        <table id="recentQuotesTable">
-          <thead><tr><th>Date</th><th>Quote No.</th><th>Client</th><th class="num">Total</th><th>Status</th></tr></thead>
-          <tbody id="recentQuotesBody"></tbody>
-        </table>
-      </div>
-      <p class="hint" id="recentQuotesEmpty" style="display:none">No quotes match this search.</p>
-    </div>
-  </section>
-
-  <!-- ============================ QUOTE BUILDER ============================ -->
-  <section id="tab-builder" class="tabpanel" style="display:none">
-
-    <div class="card status-card">
-      <div class="status-row">
-        <span class="status-pill" id="quoteStatusPill">Draft</span>
-        <span class="hint" id="quoteLockedHint" style="display:none">This quote has been Sent to Jobber and is locked. Create a revision to make changes.</span>
-      </div>
-      <div class="actions no-print" id="statusActions" style="margin:10px 0 0"></div>
-      <details class="more-settings" id="historyDetails" style="margin-top:10px;display:none">
-        <summary>History (who created, edited, approved and sent this quote)</summary>
-        <div id="historyList" style="margin-top:10px"></div>
-      </details>
-    </div>
-
-    <div class="card">
-      <h2>Quote Details</h2>
-      <div class="grid cols4">
-        <div><label>Quote No.</label><input type="text" id="quoteNo" disabled></div>
-        <div><label>Date</label><input type="date" id="quoteDate"></div>
-        <div><label>Valid Until</label><input type="date" id="validUntil"></div>
-        <div><label>Prepared / Staff</label><input type="text" id="staff" placeholder="e.g. Zeya and Zeeshan"></div>
-      </div>
-      <div class="grid cols2" style="margin-top:12px">
-        <div><label>Technician</label><input type="text" id="technician" placeholder="Technician assigned to the job"></div>
-        <div><label>Prepared By</label><input type="text" id="preparedByDisplay" disabled></div>
+  <aside class="sidebar no-print">
+    <div class="sidebar-brand">
+      <div class="logo"></div>
+      <div class="brandtext">
+        <h1>Handyman.ae</h1>
+        <p>GIJO Technical Services LLC</p>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Client</h2>
-      <div class="grid cols2">
-        <div><label>Client Name</label><input type="text" id="clientName" placeholder="Client full name"></div>
-        <div><label>Phone</label><input type="tel" id="clientPhone" placeholder="+971 ..."></div>
-        <div style="grid-column:1/-1"><label>Property</label><input type="text" id="clientAddress" placeholder="Villa / Apartment, Community, City - UAE"></div>
-        <div><label>Email</label><input type="email" id="clientEmail" placeholder="client@email.com"></div>
-        <div><label>Estimated Duration</label><input type="text" id="duration" placeholder="e.g. 2-3 Days"></div>
+    <nav class="sidenav" id="tabs">
+      <div class="sidenav-group">
+        <p class="sidenav-label">Quotes</p>
+        <button class="tab active" data-tab="home"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span></button>
+        <button class="tab" data-tab="builder"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M12 12v6M9 15h6"/></svg><span>New Quote</span></button>
+        <button class="tab" data-tab="saved"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1z"/><path d="M9 11h6M9 15h6M9 19h3"/></svg><span>Saved Quotes</span></button>
+        <button class="tab admin-only" data-tab="pricebook" style="display:none"><svg viewBox="0 0 24 24"><path d="M20.6 12.6 12 21.2 2.8 12 2 3l9-.8 9.6 9.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.3" cy="7.3" r="1.3"/></svg><span>Price Book</span></button>
+        <button class="tab" data-tab="templates"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg><span>Templates</span></button>
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Scope of Work</h2>
-      <textarea id="scope" placeholder="- Describe each item of work as a bullet line
-- Labor, materials, waste disposal and transport charges are included."></textarea>
-    </div>
-
-    <div class="card no-print">
-      <h2>Internal Notes</h2>
-      <p class="hint" style="margin-top:-6px;margin-bottom:8px">Never shown to the client - for the team only.</p>
-      <textarea id="internalNotes" placeholder="Anything the team needs to know about this job or this quote."></textarea>
-    </div>
-
-    <div class="card wizard-trigger-card">
-      <div class="section-intro" style="margin-bottom:12px">
-        <span class="section-icon">📋</span>
-        <div><strong>Services</strong><span class="section-sub">Add a trade service as Staff Labour — quick-add with default answers, or the full guided flow to fine-tune every question.</span></div>
+      <div class="sidenav-group">
+        <p class="sidenav-label">AMC</p>
+        <button class="tab" data-tab="amc"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M7.5 13.5l2 2 4-4.5"/></svg><span>AMC Tracker</span></button>
+        <button class="tab" data-tab="amc-proposals"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M9 13h6M9 17h6"/></svg><span>AMC Proposals</span></button>
       </div>
-      <div class="addbar">
-        <select id="quickServiceSelect"></select>
-        <button class="btn btn-outline" id="btnQuickAddService" type="button">+ Quick Add</button>
-        <button class="btn btn-orange" id="btnOpenWizard" type="button">Start Guided Add</button>
-      </div>
-      <p class="hint">Quick Add uses that service's default hours/technicians and its Price Book rate if one's set. Guided Add lets you answer its actual questions (brand, access, pipe lengths, etc.) first.</p>
-    </div>
 
-    <div class="card" data-card="items">
-      <div class="card-head">
-        <h2>Quote Items</h2>
-        <button class="card-toggle" type="button" aria-label="Show or hide this section"><span class="chev">▾</span></button>
+      <div class="sidenav-group admin-only" id="adminNavGroup" style="display:none">
+        <p class="sidenav-label">Admin</p>
+        <button class="tab" data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V19a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H4a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H10a1.7 1.7 0 0 0 1-1.5V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V10a1.7 1.7 0 0 0 1.5 1H20a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg><span>Settings</span></button>
+        <button class="tab" data-tab="users"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9.5" r="2.6"/><path d="M15.5 14a5.6 5.6 0 0 1 6 5.6"/></svg><span>Users &amp; Access</span></button>
       </div>
-      <div class="card-body">
-        <div style="overflow-x:auto">
-          <table id="itemsTable">
-            <thead><tr>
-              <th style="width:34px">#</th><th style="width:120px">Type</th><th>Description</th>
-              <th class="num" style="width:100px">Cost</th><th class="num" style="width:60px">Qty</th>
-              <th class="num" style="width:100px">Sell</th><th class="num" style="width:80px">Mark-up%</th>
-              <th class="num" style="width:100px">Total</th><th class="num" style="width:100px">Profit</th>
-              <th style="width:34px"></th>
-            </tr></thead>
-            <tbody id="itemsBody"></tbody>
-            <tfoot><tr class="totalrow"><td colspan="7">Items Total</td><td class="num" id="itemsSellTotal">0.00</td><td class="num" id="itemsProfitTotal">0.00</td><td></td></tr></tfoot>
-          </table>
-        </div>
-        <div class="addbar no-print">
-          <select id="itemKindSelect">
-            <option value="material">Material</option>
-            <option value="staff_labour">Staff Labour</option>
-            <option value="outside_labour">Outside Labour</option>
-            <option value="fixed_service">Fixed Service</option>
-            <option value="project_management">Project Management</option>
-            <option value="other">Other</option>
-          </select>
-          <select id="itemCatalogSelect"></select>
-          <button class="btn btn-outline btn-sm" id="addItemFromCatalog">+ Add from Price Book</button>
-          <button class="btn btn-ghost btn-sm" id="addItemBlank">+ Add blank row</button>
-        </div>
-        <p class="hint">Materials carry a Cost, Mark-up% and Sell price that stay linked - edit any one and the others update. Every other line has an independent Cost and Sell with no mark-up control.</p>
-      </div>
-    </div>
+    </nav>
 
-    <div class="pricing-grid">
-      <div class="card">
-        <h2 class="plain">Discount &amp; Other Settings</h2>
-        <div class="slider-row">
-          <div class="slider-row-head"><label>Discount</label><div class="slider-num"><input type="number" id="discountPct" step="1" min="0" max="100"><span>%</span></div></div>
-          <input type="range" class="slider" id="discountRange" min="0" max="100" step="1">
-          <p class="hint" id="discountHint">Nothing negative, nothing over the company limit (<span id="maxDiscountHintVal">100</span>%).</p>
+    <button class="sidenav-logout" id="btnLogout" type="button">
+      <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+      <span>Log Out</span>
+    </button>
+  </aside>
+
+  <div class="main-col">
+    <header class="topbar no-print">
+      <div class="team-switch" id="teamSwitch">
+        <button class="team-pill" data-team="dubai" type="button">Dubai</button>
+        <button class="team-pill" data-team="magcity" type="button">MAG City</button>
+      </div>
+      <div class="topbar-spacer"></div>
+      <div class="user-info">
+        <span id="currentUserEmail"></span>
+        <span class="role-badge" id="currentUserRole" style="display:none"></span>
+      </div>
+    </header>
+
+    <main class="main-content">
+
+      <!-- ============================ HOME / OVERVIEW ============================ -->
+      <section id="tab-home" class="tabpanel">
+        <div class="card">
+          <div class="actions" style="margin:0 0 18px;align-items:center">
+            <h2 class="plain" style="margin:0;margin-right:auto">Overview</h2>
+            <button class="btn btn-orange" id="homeNewQuote">+ New Quote</button>
+          </div>
+          <div class="addbar" style="margin:0 0 14px">
+            <input type="text" id="homePriceSearch" placeholder="Search Price Book (materials, labour, fixed services)...">
+            <button class="btn btn-ghost btn-sm" id="homeSearchClose" type="button" style="display:none">Close ✕</button>
+          </div>
+          <div id="homeSearchResults"></div>
         </div>
 
-        <details class="more-settings" open>
-          <summary>More pricing settings</summary>
-          <div class="grid cols2" style="margin-top:12px">
-            <div><label>VAT %</label><input type="number" id="vatPct" step="1" min="0"></div>
-            <div><label>Transport Qty</label><input type="number" id="transportQty" step="1" min="0"></div>
-            <div><label>Transport Fee (AED)</label><input type="number" id="transportFee" step="1" min="0"></div>
-            <div><label>Call-Out Fee (AED)</label><input type="number" id="callOutFee" step="1" min="0"></div>
-            <div style="display:flex;align-items:end;padding-bottom:8px;gap:8px;">
-              <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink);text-transform:none;font-size:13px;">
-                <input type="checkbox" id="callOut" style="width:16px;height:16px;"> Call-out applies
-              </label>
-            </div>
-            <div style="grid-column:1/-1"><label>Override Price (AED)</label><input type="number" id="overridePrice" step="1" min="0" placeholder="0 = not used"></div>
-          </div>
-        </details>
-      </div>
+        <div class="grid cols4" id="homeStats" style="margin-bottom:16px">
+          <div class="card stat-card"><div class="stat-lbl">Quotes This Month</div><div class="stat-val" id="statQuotesThisMonth">—</div></div>
+          <div class="card stat-card"><div class="stat-lbl">Sent to Jobber</div><div class="stat-val" id="statSentToJobber">—</div></div>
+          <div class="card stat-card"><div class="stat-lbl">Drafts Pending</div><div class="stat-val" id="statDraftsPending">—</div></div>
+          <div class="card stat-card stat-card-amber"><div class="stat-lbl">Pending Approval</div><div class="stat-val" id="statAwaiting">—</div></div>
+        </div>
 
-      <div class="stack">
-        <div class="card gauge-card">
-          <div class="gauge-head">
-            <p class="section-label">Live Margin</p>
-            <span class="band-badge-lg" id="gaugeBandBadge">—</span>
-          </div>
-          <div class="gauge-value">
-            <span class="gauge-pct" id="gaugeMarginPct">0.0%</span>
-            <span class="gauge-sub">Gross Margin (profit ÷ sell)</span>
-          </div>
-          <div class="gauge-value" style="margin-top:2px">
-            <span class="gauge-sub" id="gaugeMarkupPct" style="font-size:15px;font-weight:700;color:var(--ink)">Mark-up 0.0%</span>
-            <span class="gauge-sub">(profit ÷ cost — a different number on purpose)</span>
-          </div>
-          <div class="gauge-track"><div class="gauge-marker" id="gaugeMarker"></div></div>
-          <div class="gauge-ticks">
-            <span style="left:0%">0%</span>
-            <span style="left:30%">30%</span>
-            <span style="left:40%">40%</span>
-            <span style="left:50%">50%</span>
-            <span style="left:100%">100%</span>
-          </div>
-          <p class="hint" id="gaugeMessage" style="margin-top:10px"></p>
+        <div class="grid cols3" id="homeStatsSecondary" style="margin-bottom:16px">
+          <div class="card stat-card"><div class="stat-lbl">Average Mark-up</div><div class="stat-val" id="statAvgMarkup">—</div></div>
+          <div class="card stat-card"><div class="stat-lbl">Average Gross Margin</div><div class="stat-val" id="statAvgMargin">—</div></div>
+          <div class="card stat-card"><div class="stat-lbl">Price Book Items</div><div class="stat-val" id="statItemCount">—</div></div>
         </div>
 
         <div class="card">
-          <div class="summary">
-            <div class="lbl">Total Cost</div><div class="val" id="sumCostPrice">AED 0.00</div>
-            <div class="lbl">Selling Price</div><div class="val" id="sumSellingPrice">AED 0.00</div>
-            <div class="lbl">Profit</div><div class="val profit" id="sumProfit">AED 0.00</div>
-            <div class="lbl">Mark-up %</div><div class="val" id="sumMarkupPct">0.0%</div>
-            <div class="lbl">Gross Margin %</div><div class="val" id="sumMarginPct">0.0%</div>
-            <div class="lbl">VAT</div><div class="val" id="sumVat">AED 0.00</div>
+          <h2>Needs Your Approval</h2>
+          <p class="hint" style="margin-bottom:12px">Quotes over AED 2,000 (or with a heavy discount) waiting for an admin to check before they can be sent to Jobber.</p>
+          <div style="overflow-x:auto">
+            <table id="approvalTable">
+              <thead><tr><th>Quote No.</th><th>Client</th><th>Reason</th><th class="num">Value</th><th>Prepared By</th><th style="width:170px"></th></tr></thead>
+              <tbody id="approvalBody"></tbody>
+            </table>
           </div>
-          <div class="grandbar"><span>Grand Total</span><span id="sumGrand">AED 0.00</span></div>
+          <p class="hint" id="approvalEmpty" style="display:none">Nothing waiting on approval right now.</p>
+        </div>
 
-          <details class="more-settings" style="margin-top:14px">
-            <summary>Show full cost breakdown</summary>
-            <div class="summary" style="margin-top:10px">
-              <div class="lbl">Items Cost Subtotal</div><div class="val" id="sumItemsCost">AED 0.00</div>
-              <div class="lbl">Items Sell Subtotal</div><div class="val" id="sumItemsSell">AED 0.00</div>
-              <div class="lbl">Transport</div><div class="val" id="sumVehicle">AED 0.00</div>
-              <div class="lbl">Call-out</div><div class="val" id="sumCallOut">AED 0.00</div>
-              <div class="lbl">Gross (before discount)</div><div class="val" id="sumGross">AED 0.00</div>
-              <div class="lbl">Discount Amount</div><div class="val" id="sumDiscountAmt">AED 0.00</div>
+        <div class="card">
+          <h2>Recent Quotes</h2>
+          <div class="grid cols4" style="align-items:end;margin-bottom:12px">
+            <div style="grid-column:1/3"><label>Search (client / quote no.)</label><input type="text" id="recentSearch" placeholder="Type to search..."></div>
+            <div>
+              <label>Status</label>
+              <select id="recentStatusFilter">
+                <option value="">All statuses</option>
+                <option value="Draft">Draft</option>
+                <option value="Approval Required">Approval Required</option>
+                <option value="Sent to Jobber">Sent to Jobber</option>
+              </select>
             </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table id="recentQuotesTable">
+              <thead><tr><th>Date</th><th>Quote No.</th><th>Client</th><th class="num">Total</th><th>Status</th></tr></thead>
+              <tbody id="recentQuotesBody"></tbody>
+            </table>
+          </div>
+          <p class="hint" id="recentQuotesEmpty" style="display:none">No quotes match this search.</p>
+        </div>
+      </section>
+
+      <!-- ============================ QUOTE BUILDER ============================ -->
+      <section id="tab-builder" class="tabpanel" style="display:none">
+
+        <div class="print-header">
+          <div class="print-header-logo"></div>
+          <div>
+            <div class="print-header-name" id="printHeaderName"></div>
+            <div class="print-header-sub" id="printHeaderSub"></div>
+          </div>
+        </div>
+
+        <div class="card status-card">
+          <div class="status-row">
+            <span class="status-pill" id="quoteStatusPill">Draft</span>
+            <span class="hint" id="quoteLockedHint" style="display:none">This quote has been Sent to Jobber and is locked. Create a revision to make changes.</span>
+          </div>
+          <div class="actions no-print" id="statusActions" style="margin:10px 0 0"></div>
+          <details class="more-settings" id="historyDetails" style="margin-top:10px;display:none">
+            <summary>History (who created, edited, approved and sent this quote)</summary>
+            <div id="historyList" style="margin-top:10px"></div>
           </details>
         </div>
-      </div>
-    </div>
 
-    <div class="card" data-card="terms">
-      <div class="card-head">
-        <h2>Terms &amp; Conditions</h2>
-        <button class="card-toggle" type="button" aria-label="Show or hide this section"><span class="chev">▾</span></button>
-      </div>
-      <div class="card-body">
-        <textarea id="terms" style="min-height:150px"></textarea>
-      </div>
-    </div>
-
-    <div class="actions no-print">
-      <button class="btn btn-primary" id="btnSaveQuote">Save Quote</button>
-      <button class="btn btn-navy" id="btnPrint">Print / Save as PDF</button>
-      <button class="btn btn-orange" id="btnWhatsapp">Copy for WhatsApp</button>
-      <button class="btn btn-outline" id="btnJobberHelperBuilder">Jobber Entry Helper</button>
-      <button class="btn btn-outline" id="btnNew">New Quote</button>
-    </div>
-
-    <p class="footer-note" id="companyFooter"></p>
-  </section>
-
-  <!-- ============================ PRICE BOOK ============================ -->
-  <section id="tab-pricebook" class="tabpanel" style="display:none">
-    <div class="card admin-only" id="usersCard" style="display:none">
-      <h2>Users &amp; Access</h2>
-      <p class="hint" style="margin-bottom:14px">Anyone with an @handyman.ae, @kenzieclean.ae or @legacygroup.me email can sign in and starts as staff. Add someone below (before or after they've ever signed in) and set their role - signing in never overwrites a role you've set.</p>
-      <div style="overflow-x:auto">
-        <table id="usersTable">
-          <thead><tr><th>Email</th><th>Name</th><th>Last Login</th><th style="width:160px">Role</th><th style="width:90px"></th></tr></thead>
-          <tbody id="usersBody"></tbody>
-        </table>
-      </div>
-      <p class="hint" id="usersEmpty" style="display:none">No one has signed in yet.</p>
-
-      <div class="addbar no-print" style="margin-top:18px">
-        <input type="text" id="newUserName" placeholder="Name (optional)" style="max-width:180px">
-        <input type="email" id="newUserEmail" placeholder="email@handyman.ae">
-        <select id="newUserRole" style="max-width:110px"><option value="staff">Staff</option><option value="admin">Admin</option></select>
-        <button class="btn btn-orange btn-sm" id="btnAddUser">+ Add User</button>
-      </div>
-      <div id="allowlistList" style="margin-top:10px"></div>
-    </div>
-
-    <div class="card admin-only" id="companySettingsCard" style="display:none">
-      <h2>Company Settings</h2>
-      <p class="hint" style="margin-bottom:14px">These apply to every quote by default (a quote can still override VAT/transport/call-out per-job). Admin-only.</p>
-      <div class="grid cols4">
-        <div><label>VAT %</label><input type="number" id="setVatPct" step="0.5" min="0"></div>
-        <div><label>Max Discount %</label><input type="number" id="setMaxDiscountPct" step="1" min="0" max="100"></div>
-        <div><label>Default Hourly Rate (AED)</label><input type="number" id="setHourlyRate" step="1" min="0"></div>
-        <div><label>Default Material Mark-up %</label><input type="number" id="setDefaultMaterialMarkupPct" step="1" min="0"></div>
-        <div><label>Transport Fee (AED)</label><input type="number" id="setTransportFee" step="1" min="0"></div>
-        <div><label>Call-Out Fee (AED)</label><input type="number" id="setCallOutFee" step="1" min="0"></div>
-        <div><label>Margin Minimum %</label><input type="number" id="setMarginMinPct" step="1" min="0"></div>
-        <div><label>Margin Target %</label><input type="number" id="setMarginTargetPct" step="1" min="0"></div>
-        <div><label>Margin Upper %</label><input type="number" id="setMarginUpperPct" step="1" min="0"></div>
-      </div>
-      <div class="actions" style="margin-top:14px">
-        <button class="btn btn-primary btn-sm" id="btnSaveSettings">Save Company Settings</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2 class="plain">Price Book</h2>
-      <p class="hint" style="margin-bottom:16px">Materials, Labour and Fixed Services all feed the "Add from Price Book" list in New Quote. <span id="pbAdminHint">Only admins can add, edit or remove items here.</span></p>
-
-      <div class="pb-search-row">
-        <input type="text" id="pbMaterialsSearch" placeholder="Search materials by item, category, brand, model/size...">
-      </div>
-      <h3 class="pb-section-title">Materials</h3>
-      <div style="overflow-x:auto">
-        <table id="pbMaterialsTable">
-          <thead><tr><th>Category</th><th>Item</th><th>Brand</th><th>Model / Size</th><th>Unit</th><th class="num">Cost</th><th class="num">Default Sell</th><th>Supplier</th><th>Last Updated</th><th></th></tr></thead>
-          <tbody id="pbMaterialsBody"></tbody>
-        </table>
-      </div>
-      <div class="addbar no-print admin-only" id="pbMaterialsAddBar" style="display:none">
-        <input type="text" class="pb-new-cat" placeholder="Category" style="max-width:140px">
-        <input type="text" class="pb-new-item" placeholder="Item name" style="flex:1">
-        <input type="text" class="pb-new-brand" placeholder="Brand" style="max-width:120px">
-        <input type="text" class="pb-new-model" placeholder="Model/Size" style="max-width:120px">
-        <input type="text" class="pb-new-unit" placeholder="Unit" style="max-width:90px">
-        <input type="number" class="pb-new-cost" placeholder="Cost" style="max-width:100px">
-        <input type="number" class="pb-new-sell" placeholder="Default Sell" style="max-width:110px">
-        <input type="text" class="pb-new-supplier" placeholder="Supplier" style="max-width:120px">
-        <button class="btn btn-orange btn-sm" id="pbAddMaterialBtn">+ Add Material</button>
-      </div>
-
-      <div class="pb-search-row" style="margin-top:26px">
-        <input type="text" id="pbLabourSearch" placeholder="Search labour roles...">
-      </div>
-      <h3 class="pb-section-title">Labour</h3>
-      <div style="overflow-x:auto">
-        <table id="pbLabourTable">
-          <thead><tr><th>Role</th><th>Type</th><th class="num">Cost</th><th class="num">Default Sell</th><th>Unit</th><th>Last Updated</th><th></th></tr></thead>
-          <tbody id="pbLabourBody"></tbody>
-        </table>
-      </div>
-      <div class="addbar no-print admin-only" id="pbLabourAddBar" style="display:none">
-        <input type="text" class="pb-new-role" placeholder="Role name" style="flex:1">
-        <select class="pb-new-labour-type" style="max-width:120px"><option value="staff">Staff</option><option value="outside">Outside</option></select>
-        <input type="number" class="pb-new-cost" placeholder="Cost" style="max-width:100px">
-        <input type="number" class="pb-new-sell" placeholder="Default Sell" style="max-width:110px">
-        <input type="text" class="pb-new-unit" placeholder="Unit (per hour, per day...)" style="max-width:160px">
-        <button class="btn btn-orange btn-sm" id="pbAddLabourBtn">+ Add Labour</button>
-      </div>
-
-      <div class="pb-search-row" style="margin-top:26px">
-        <input type="text" id="pbFixedSearch" placeholder="Search fixed services...">
-      </div>
-      <h3 class="pb-section-title">Fixed Services</h3>
-      <div style="overflow-x:auto">
-        <table id="pbFixedTable">
-          <thead><tr><th>Category</th><th>Service</th><th class="num">Estimated Cost</th><th class="num">Standard Sell</th><th>Last Updated</th><th></th></tr></thead>
-          <tbody id="pbFixedBody"></tbody>
-        </table>
-      </div>
-      <div class="addbar no-print admin-only" id="pbFixedAddBar" style="display:none">
-        <input type="text" class="pb-new-cat" placeholder="Category" style="max-width:160px">
-        <input type="text" class="pb-new-service" placeholder="Service name (e.g. AC Servicing)" style="flex:1">
-        <input type="number" class="pb-new-est-cost" placeholder="Estimated Cost" style="max-width:130px">
-        <input type="number" class="pb-new-std-sell" placeholder="Standard Sell" style="max-width:120px">
-        <button class="btn btn-orange btn-sm" id="pbAddFixedBtn">+ Add Fixed Service</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================ TEMPLATES ============================ -->
-  <section id="tab-templates" class="tabpanel" style="display:none">
-    <div class="card" id="templatesListCard">
-      <h2 class="plain">Quote Templates</h2>
-      <p class="hint" style="margin-bottom:16px">Reusable line-item bundles for regularly quoted jobs - e.g. "50L Water Heater Replacement" containing the heater, required materials/accessories, labour and disposal. Applying a template adds all its lines to your current quote; staff can then adjust descriptions, quantities, costs and sell prices.</p>
-      <div class="addbar">
-        <input type="text" id="templatesSearch" placeholder="Search templates...">
-      </div>
-      <div id="templatesList" style="margin-top:14px"></div>
-      <div class="admin-only" id="templateCreateBar" style="display:none;margin-top:18px">
-        <button class="btn btn-orange btn-sm" id="btnNewTemplate">+ New Template</button>
-      </div>
-    </div>
-
-    <div class="card admin-only" id="templateEditorCard" style="display:none">
-      <h2 class="plain" id="templateEditorHeading">New Template</h2>
-      <div class="grid cols2">
-        <div><label>Name</label><input type="text" id="tplName" placeholder="e.g. 50L Water Heater Replacement"></div>
-        <div><label>Description</label><input type="text" id="tplDescription" placeholder="What this job/bundle includes"></div>
-      </div>
-
-      <div style="overflow-x:auto;margin-top:16px">
-        <table id="tplItemsTable">
-          <thead><tr>
-            <th style="width:34px">#</th><th style="width:120px">Type</th><th>Description</th>
-            <th class="num" style="width:100px">Cost</th><th class="num" style="width:60px">Qty</th>
-            <th class="num" style="width:100px">Sell</th><th class="num" style="width:80px">Mark-up%</th>
-            <th class="num" style="width:100px">Total</th><th style="width:34px"></th>
-          </tr></thead>
-          <tbody id="tplItemsBody"></tbody>
-          <tfoot><tr class="totalrow"><td colspan="7">Items Total</td><td class="num" id="tplItemsSellTotal">0.00</td><td></td></tr></tfoot>
-        </table>
-      </div>
-      <div class="addbar no-print" style="margin-top:10px">
-        <select id="tplItemKindSelect">
-          <option value="material">Material</option>
-          <option value="staff_labour">Staff Labour</option>
-          <option value="outside_labour">Outside Labour</option>
-          <option value="fixed_service">Fixed Service</option>
-          <option value="project_management">Project Management</option>
-          <option value="other">Other</option>
-        </select>
-        <select id="tplItemCatalogSelect"></select>
-        <button class="btn btn-outline btn-sm" id="tplAddItemFromCatalog">+ Add from Price Book</button>
-        <button class="btn btn-ghost btn-sm" id="tplAddItemBlank">+ Add blank row</button>
-      </div>
-      <p class="hint">Materials carry a Cost, Mark-up% and Sell price that stay linked - edit any one and the others update.</p>
-
-      <div class="actions" style="margin-top:16px">
-        <button class="btn btn-primary" id="btnSaveTemplateEditor">Save Template</button>
-        <button class="btn btn-ghost" id="btnCancelTemplateEditor">Cancel</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================ SAVED QUOTES ============================ -->
-  <section id="tab-saved" class="tabpanel" style="display:none">
-    <div class="card">
-      <h2>Saved Quotes</h2>
-      <div class="grid cols4" style="align-items:end;">
-        <div><label>From</label><input type="date" id="filterFrom"></div>
-        <div><label>To</label><input type="date" id="filterTo"></div>
-        <div><label>Status</label>
-          <select id="filterStatus">
-            <option value="">All</option>
-            <option value="Draft">Draft</option>
-            <option value="Approval Required">Approval Required</option>
-            <option value="Sent to Jobber">Sent to Jobber</option>
-          </select>
+        <div class="card">
+          <h2>Quote Details</h2>
+          <div class="grid cols4">
+            <div><label>Quote No.</label><input type="text" id="quoteNo" disabled></div>
+            <div><label>Date</label><input type="date" id="quoteDate"></div>
+            <div><label>Valid Until</label><input type="date" id="validUntil"></div>
+            <div><label>Prepared / Staff</label><input type="text" id="staff" placeholder="e.g. Zeya and Zeeshan"></div>
+          </div>
+          <div class="grid cols2" style="margin-top:12px">
+            <div><label>Technician</label><input type="text" id="technician" list="techList" placeholder="Technician assigned to the job"></div>
+            <div><label>Prepared By</label><input type="text" id="preparedByDisplay" disabled></div>
+          </div>
+          <datalist id="techList"></datalist>
         </div>
-        <div><label>Prepared By</label><input type="text" id="filterPreparedBy" placeholder="email, exact match"></div>
-      </div>
-      <div class="grid cols4" style="align-items:end;margin-top:12px">
-        <div style="grid-column:1/-1"><label>Search (client / quote no. / property)</label><input type="text" id="filterSearch" placeholder="Type to search..."></div>
-      </div>
-      <div class="addbar" style="margin-top:14px">
-        <button class="btn btn-outline btn-sm" id="applyFilters">Apply Filters</button>
-        <button class="btn btn-ghost btn-sm" id="clearFilters">Clear</button>
-        <button class="btn btn-outline btn-sm" id="copyTableBtn" style="margin-left:auto">Copy Table</button>
-      </div>
-      <div style="overflow-x:auto;margin-top:14px">
-        <table id="savedTable">
-          <thead><tr><th>Date</th><th>Quote No.</th><th>Status</th><th>Client</th><th>Property</th><th>Prepared By</th><th class="num">Grand Total</th><th style="width:290px"></th></tr></thead>
-          <tbody id="savedBody"></tbody>
-        </table>
-      </div>
-      <p class="hint" id="savedCount" style="margin-top:10px"></p>
-    </div>
-  </section>
 
+        <div class="card">
+          <h2>Client</h2>
+          <div class="grid cols2">
+            <div><label>Client Name</label><input type="text" id="clientName" list="clientList" placeholder="Client full name"></div>
+            <div><label>Phone</label><input type="tel" id="clientPhone" placeholder="+971 ..."></div>
+            <div style="grid-column:1/-1"><label>Property</label><input type="text" id="clientAddress" list="propertyList" placeholder="Villa / Apartment, Community, City - UAE"></div>
+            <div><label>Email</label><input type="email" id="clientEmail" placeholder="client@email.com"></div>
+            <div><label>Estimated Duration</label><input type="text" id="duration" placeholder="e.g. 2-3 Days"></div>
+          </div>
+          <datalist id="clientList"></datalist>
+          <datalist id="propertyList"></datalist>
+        </div>
+
+        <div class="card">
+          <h2>Scope of Work</h2>
+          <textarea id="scope" placeholder="- Describe each item of work as a bullet line
+- Labor, materials, waste disposal and transport charges are included."></textarea>
+        </div>
+
+        <div class="card no-print">
+          <h2>Internal Notes</h2>
+          <p class="hint" style="margin-top:-6px;margin-bottom:8px">Never shown to the client - for the team only.</p>
+          <textarea id="internalNotes" placeholder="Anything the team needs to know about this job or this quote."></textarea>
+        </div>
+
+        <div class="card wizard-trigger-card">
+          <div class="section-intro" style="margin-bottom:12px">
+            <span class="section-icon">📋</span>
+            <div><strong>Services</strong><span class="section-sub">Add a trade service as Staff Labour — quick-add with default answers, or the full guided flow to fine-tune every question.</span></div>
+          </div>
+          <div class="addbar">
+            <select id="quickServiceSelect"></select>
+            <button class="btn btn-outline" id="btnQuickAddService" type="button">+ Quick Add</button>
+            <button class="btn btn-orange" id="btnOpenWizard" type="button">Start Guided Add</button>
+          </div>
+          <p class="hint">Quick Add uses that service's default hours/technicians and its Price Book rate if one's set. Guided Add lets you answer its actual questions (brand, access, pipe lengths, etc.) first.</p>
+        </div>
+
+        <div class="card" data-card="items">
+          <div class="card-head">
+            <h2>Quote Items</h2>
+            <button class="card-toggle" type="button" aria-label="Show or hide this section"><span class="chev">▾</span></button>
+          </div>
+          <div class="card-body">
+            <div style="overflow-x:auto">
+              <table id="itemsTable">
+                <thead><tr>
+                  <th style="width:34px">#</th><th style="width:120px">Type</th><th>Description</th>
+                  <th class="num" style="width:100px">Cost</th><th class="num" style="width:60px">Qty</th>
+                  <th class="num" style="width:100px">Sell</th><th class="num" style="width:80px">Mark-up%</th>
+                  <th class="num" style="width:100px">Total</th><th class="num" style="width:100px">Profit</th>
+                  <th style="width:34px"></th>
+                </tr></thead>
+                <tbody id="itemsBody"></tbody>
+                <tfoot><tr class="totalrow"><td colspan="7">Items Total</td><td class="num" id="itemsSellTotal">0.00</td><td class="num" id="itemsProfitTotal">0.00</td><td></td></tr></tfoot>
+              </table>
+            </div>
+            <div class="addbar no-print">
+              <select id="itemKindSelect">
+                <option value="material">Material</option>
+                <option value="staff_labour">Staff Labour</option>
+                <option value="outside_labour">Outside Labour</option>
+                <option value="fixed_service">Fixed Service</option>
+                <option value="project_management">Project Management</option>
+                <option value="other">Other</option>
+              </select>
+              <select id="itemCatalogSelect"></select>
+              <button class="btn btn-outline btn-sm" id="addItemFromCatalog">+ Add from Price Book</button>
+              <button class="btn btn-ghost btn-sm" id="addItemBlank">+ Add blank row</button>
+            </div>
+            <p class="hint">Materials carry a Cost, Mark-up% and Sell price that stay linked - edit any one and the others update. Every other line has an independent Cost and Sell with no mark-up control.</p>
+          </div>
+        </div>
+
+        <div class="pricing-grid">
+          <div class="card">
+            <h2 class="plain">Discount &amp; Other Settings</h2>
+            <div class="slider-row">
+              <div class="slider-row-head"><label>Discount</label><div class="slider-num"><input type="number" id="discountPct" step="1" min="0" max="100"><span>%</span></div></div>
+              <input type="range" class="slider" id="discountRange" min="0" max="100" step="1">
+              <p class="hint" id="discountHint">Nothing negative, nothing over the company limit (<span id="maxDiscountHintVal">100</span>%).</p>
+            </div>
+
+            <details class="more-settings" open>
+              <summary>More pricing settings</summary>
+              <div class="grid cols2" style="margin-top:12px">
+                <div><label>VAT %</label><input type="number" id="vatPct" step="1" min="0"></div>
+                <div><label>Transport Qty</label><input type="number" id="transportQty" step="1" min="0"></div>
+                <div><label>Transport Fee (AED)</label><input type="number" id="transportFee" step="1" min="0"></div>
+                <div><label>Call-Out Fee (AED)</label><input type="number" id="callOutFee" step="1" min="0"></div>
+                <div style="display:flex;align-items:end;padding-bottom:8px;gap:8px;">
+                  <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink);text-transform:none;font-size:13px;">
+                    <input type="checkbox" id="callOut" style="width:16px;height:16px;"> Call-out applies
+                  </label>
+                </div>
+                <div style="grid-column:1/-1"><label>Override Price (AED)</label><input type="number" id="overridePrice" step="1" min="0" placeholder="0 = not used"></div>
+              </div>
+            </details>
+          </div>
+
+          <div class="stack">
+            <div class="card gauge-card">
+              <div class="gauge-head">
+                <p class="section-label">Live Margin</p>
+                <span class="band-badge-lg" id="gaugeBandBadge">—</span>
+              </div>
+              <div class="gauge-value">
+                <span class="gauge-pct" id="gaugeMarginPct">0.0%</span>
+                <span class="gauge-sub">Gross Margin (profit ÷ sell)</span>
+              </div>
+              <div class="gauge-value" style="margin-top:2px">
+                <span class="gauge-sub" id="gaugeMarkupPct" style="font-size:15px;font-weight:700;color:var(--ink)">Mark-up 0.0%</span>
+                <span class="gauge-sub">(profit ÷ cost — a different number on purpose)</span>
+              </div>
+              <div class="gauge-track"><div class="gauge-marker" id="gaugeMarker"></div></div>
+              <div class="gauge-ticks">
+                <span style="left:0%">0%</span>
+                <span style="left:30%">30%</span>
+                <span style="left:40%">40%</span>
+                <span style="left:50%">50%</span>
+                <span style="left:100%">100%</span>
+              </div>
+              <p class="hint" id="gaugeMessage" style="margin-top:10px"></p>
+            </div>
+
+            <div class="card">
+              <div class="summary">
+                <div class="lbl">Total Cost</div><div class="val" id="sumCostPrice">AED 0.00</div>
+                <div class="lbl">Selling Price</div><div class="val" id="sumSellingPrice">AED 0.00</div>
+                <div class="lbl">Profit</div><div class="val profit" id="sumProfit">AED 0.00</div>
+                <div class="lbl">Mark-up %</div><div class="val" id="sumMarkupPct">0.0%</div>
+                <div class="lbl">Gross Margin %</div><div class="val" id="sumMarginPct">0.0%</div>
+                <div class="lbl">VAT</div><div class="val" id="sumVat">AED 0.00</div>
+              </div>
+              <div class="grandbar"><span>Grand Total</span><span id="sumGrand">AED 0.00</span></div>
+
+              <details class="more-settings" style="margin-top:14px">
+                <summary>Show full cost breakdown</summary>
+                <div class="summary" style="margin-top:10px">
+                  <div class="lbl">Items Cost Subtotal</div><div class="val" id="sumItemsCost">AED 0.00</div>
+                  <div class="lbl">Items Sell Subtotal</div><div class="val" id="sumItemsSell">AED 0.00</div>
+                  <div class="lbl">Transport</div><div class="val" id="sumVehicle">AED 0.00</div>
+                  <div class="lbl">Call-out</div><div class="val" id="sumCallOut">AED 0.00</div>
+                  <div class="lbl">Gross (before discount)</div><div class="val" id="sumGross">AED 0.00</div>
+                  <div class="lbl">Discount Amount</div><div class="val" id="sumDiscountAmt">AED 0.00</div>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-card="terms">
+          <div class="card-head">
+            <h2>Terms &amp; Conditions</h2>
+            <button class="card-toggle" type="button" aria-label="Show or hide this section"><span class="chev">▾</span></button>
+          </div>
+          <div class="card-body">
+            <textarea id="terms" style="min-height:150px"></textarea>
+          </div>
+        </div>
+
+        <div class="actions no-print">
+          <button class="btn btn-primary" id="btnSaveQuote">Save Quote</button>
+          <button class="btn btn-outline" id="btnPrint">Print / Save as PDF</button>
+          <button class="btn btn-orange" id="btnWhatsapp">Copy for WhatsApp</button>
+          <button class="btn btn-outline" id="btnJobberHelperBuilder">Jobber Entry Helper</button>
+          <button class="btn btn-ghost" id="btnNew">New Quote</button>
+        </div>
+
+        <p class="footer-note" id="companyFooter"></p>
+      </section>
+
+      <!-- ============================ PRICE BOOK ============================ -->
+      <section id="tab-pricebook" class="tabpanel" style="display:none">
+        <div class="card">
+          <h2 class="plain">Price Book</h2>
+          <p class="hint" style="margin-bottom:16px">Materials, Labour and Fixed Services all feed the "Add from Price Book" list in New Quote. <span id="pbAdminHint">Only admins can add, edit or remove items here.</span></p>
+
+          <div class="addbar admin-only" id="pbAdminToolsBar" style="display:none;margin-bottom:20px">
+            <button class="btn btn-outline btn-sm" id="btnExportPricebook">Export Price Book (JSON)</button>
+            <button class="btn btn-ghost btn-sm" id="btnResetTeamPricebook">Reset This Team to Original</button>
+          </div>
+
+          <div class="pb-search-row">
+            <input type="text" id="pbMaterialsSearch" placeholder="Search materials by item, category, brand, model/size...">
+          </div>
+          <h3 class="pb-section-title">Materials</h3>
+          <div style="overflow-x:auto">
+            <table id="pbMaterialsTable">
+              <thead><tr><th>Category</th><th>Item</th><th>Brand</th><th>Model / Size</th><th>Unit</th><th class="num">Cost</th><th class="num">Default Sell</th><th>Supplier</th><th>Last Updated</th><th></th></tr></thead>
+              <tbody id="pbMaterialsBody"></tbody>
+            </table>
+          </div>
+          <div class="addbar no-print admin-only" id="pbMaterialsAddBar" style="display:none">
+            <input type="text" class="pb-new-cat" placeholder="Category" style="max-width:140px">
+            <input type="text" class="pb-new-item" placeholder="Item name" style="flex:1">
+            <input type="text" class="pb-new-brand" placeholder="Brand" style="max-width:120px">
+            <input type="text" class="pb-new-model" placeholder="Model/Size" style="max-width:120px">
+            <input type="text" class="pb-new-unit" placeholder="Unit" style="max-width:90px">
+            <input type="number" class="pb-new-cost" placeholder="Cost" style="max-width:100px">
+            <input type="number" class="pb-new-sell" placeholder="Default Sell" style="max-width:110px">
+            <input type="text" class="pb-new-supplier" placeholder="Supplier" style="max-width:120px">
+            <button class="btn btn-orange btn-sm" id="pbAddMaterialBtn">+ Add Material</button>
+          </div>
+
+          <div class="pb-search-row" style="margin-top:26px">
+            <input type="text" id="pbLabourSearch" placeholder="Search labour roles...">
+          </div>
+          <h3 class="pb-section-title">Labour</h3>
+          <div style="overflow-x:auto">
+            <table id="pbLabourTable">
+              <thead><tr><th>Role</th><th>Type</th><th class="num">Cost</th><th class="num">Default Sell</th><th>Unit</th><th>Last Updated</th><th></th></tr></thead>
+              <tbody id="pbLabourBody"></tbody>
+            </table>
+          </div>
+          <div class="addbar no-print admin-only" id="pbLabourAddBar" style="display:none">
+            <input type="text" class="pb-new-role" placeholder="Role name" style="flex:1">
+            <select class="pb-new-labour-type" style="max-width:120px"><option value="staff">Staff</option><option value="outside">Outside</option></select>
+            <input type="number" class="pb-new-cost" placeholder="Cost" style="max-width:100px">
+            <input type="number" class="pb-new-sell" placeholder="Default Sell" style="max-width:110px">
+            <input type="text" class="pb-new-unit" placeholder="Unit (per hour, per day...)" style="max-width:160px">
+            <button class="btn btn-orange btn-sm" id="pbAddLabourBtn">+ Add Labour</button>
+          </div>
+
+          <div class="pb-search-row" style="margin-top:26px">
+            <input type="text" id="pbFixedSearch" placeholder="Search fixed services...">
+          </div>
+          <h3 class="pb-section-title">Fixed Services</h3>
+          <div style="overflow-x:auto">
+            <table id="pbFixedTable">
+              <thead><tr><th>Category</th><th>Service</th><th class="num">Estimated Cost</th><th class="num">Standard Sell</th><th>Last Updated</th><th></th></tr></thead>
+              <tbody id="pbFixedBody"></tbody>
+            </table>
+          </div>
+          <div class="addbar no-print admin-only" id="pbFixedAddBar" style="display:none">
+            <input type="text" class="pb-new-cat" placeholder="Category" style="max-width:160px">
+            <input type="text" class="pb-new-service" placeholder="Service name (e.g. AC Servicing)" style="flex:1">
+            <input type="number" class="pb-new-est-cost" placeholder="Estimated Cost" style="max-width:130px">
+            <input type="number" class="pb-new-std-sell" placeholder="Standard Sell" style="max-width:120px">
+            <button class="btn btn-orange btn-sm" id="pbAddFixedBtn">+ Add Fixed Service</button>
+          </div>
+
+          <div class="pb-search-row" style="margin-top:26px">
+            <input type="text" id="pbSuppliersSearch" placeholder="Search suppliers by name, category, location...">
+          </div>
+          <h3 class="pb-section-title">Suppliers <span class="hint" style="text-transform:none;font-weight:400">— parts &amp; materials vendors for <span id="pbSuppliersTeamLabel">Dubai</span></span></h3>
+          <div style="overflow-x:auto">
+            <table id="pbSuppliersTable">
+              <thead><tr><th>Category</th><th>Name</th><th>Location</th><th>Phone</th><th>Email</th><th>Services</th><th>Preferred</th><th></th></tr></thead>
+              <tbody id="pbSuppliersBody"></tbody>
+            </table>
+          </div>
+          <div class="addbar no-print admin-only" id="pbSuppliersAddBar" style="display:none">
+            <input type="text" class="pb-new-cat" placeholder="Category" style="max-width:160px">
+            <input type="text" class="pb-new-name" placeholder="Supplier name" style="flex:1">
+            <input type="text" class="pb-new-location" placeholder="Location" style="max-width:130px">
+            <input type="text" class="pb-new-phone" placeholder="Phone" style="max-width:130px">
+            <input type="text" class="pb-new-email" placeholder="Email" style="max-width:160px">
+            <input type="text" class="pb-new-services" placeholder="Services / notes" style="flex:1.5">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink);text-transform:none;font-size:13px;white-space:nowrap;">
+              <input type="checkbox" class="pb-new-preferred" style="width:16px;height:16px;"> Preferred
+            </label>
+            <button class="btn btn-orange btn-sm" id="pbAddSupplierBtn">+ Add Supplier</button>
+          </div>
+
+          <div class="pb-search-row" style="margin-top:26px">
+            <input type="text" id="pbContractorsSearch" placeholder="Search contractors by name, category, services...">
+          </div>
+          <h3 class="pb-section-title">Contractors</h3>
+          <p class="hint" style="margin:-4px 0 12px">Subcontractors who bill the client directly — global across both locations, since one may serve either team.</p>
+          <div id="pbContractorsList"></div>
+          <div class="admin-only" id="pbContractorsAddCard" style="display:none;margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:14px 16px;">
+            <p class="section-label" style="margin-bottom:10px">Add Contractor</p>
+            <div class="addbar no-print" style="margin-top:0">
+              <input type="text" class="pb-new-cat" placeholder="Category" style="max-width:160px">
+              <input type="text" class="pb-new-name" placeholder="Contractor name" style="flex:1">
+              <input type="text" class="pb-new-location" placeholder="Location" style="max-width:160px">
+              <input type="text" class="pb-new-phone" placeholder="Phone" style="max-width:130px">
+              <input type="text" class="pb-new-email" placeholder="Email" style="max-width:160px">
+            </div>
+            <div class="addbar no-print" style="margin-top:8px">
+              <input type="text" class="pb-new-services" placeholder="Services / notes" style="flex:1">
+              <label style="display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink);text-transform:none;font-size:13px;white-space:nowrap;">
+                <input type="checkbox" class="pb-new-preferred" style="width:16px;height:16px;"> Preferred
+              </label>
+              <button class="btn btn-orange btn-sm" id="pbAddContractorBtn">+ Add Contractor</button>
+            </div>
+            <div class="addbar no-print" style="margin-top:8px">
+              <input type="text" class="pb-new-notes" placeholder="Notes (anything worth remembering about this contractor - internal only)" style="flex:1">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ TEMPLATES ============================ -->
+      <section id="tab-templates" class="tabpanel" style="display:none">
+        <div class="card" id="templatesListCard">
+          <h2 class="plain">Quote Templates</h2>
+          <p class="hint" style="margin-bottom:16px">Reusable line-item bundles for regularly quoted jobs - e.g. "50L Water Heater Replacement" containing the heater, required materials/accessories, labour and disposal. Applying a template adds all its lines to your current quote; staff can then adjust descriptions, quantities, costs and sell prices.</p>
+          <div class="addbar">
+            <input type="text" id="templatesSearch" placeholder="Search templates...">
+          </div>
+          <div id="templatesList" style="margin-top:14px"></div>
+          <div class="admin-only" id="templateCreateBar" style="display:none;margin-top:18px">
+            <button class="btn btn-orange btn-sm" id="btnNewTemplate">+ New Template</button>
+          </div>
+        </div>
+
+        <div class="card admin-only" id="templateEditorCard" style="display:none">
+          <h2 class="plain" id="templateEditorHeading">New Template</h2>
+          <div class="grid cols2">
+            <div><label>Name</label><input type="text" id="tplName" placeholder="e.g. 50L Water Heater Replacement"></div>
+            <div><label>Description</label><input type="text" id="tplDescription" placeholder="What this job/bundle includes"></div>
+          </div>
+
+          <div style="overflow-x:auto;margin-top:16px">
+            <table id="tplItemsTable">
+              <thead><tr>
+                <th style="width:34px">#</th><th style="width:120px">Type</th><th>Description</th>
+                <th class="num" style="width:100px">Cost</th><th class="num" style="width:60px">Qty</th>
+                <th class="num" style="width:100px">Sell</th><th class="num" style="width:80px">Mark-up%</th>
+                <th class="num" style="width:100px">Total</th><th style="width:34px"></th>
+              </tr></thead>
+              <tbody id="tplItemsBody"></tbody>
+              <tfoot><tr class="totalrow"><td colspan="7">Items Total</td><td class="num" id="tplItemsSellTotal">0.00</td><td></td></tr></tfoot>
+            </table>
+          </div>
+          <div class="addbar no-print" style="margin-top:10px">
+            <select id="tplItemKindSelect">
+              <option value="material">Material</option>
+              <option value="staff_labour">Staff Labour</option>
+              <option value="outside_labour">Outside Labour</option>
+              <option value="fixed_service">Fixed Service</option>
+              <option value="project_management">Project Management</option>
+              <option value="other">Other</option>
+            </select>
+            <select id="tplItemCatalogSelect"></select>
+            <button class="btn btn-outline btn-sm" id="tplAddItemFromCatalog">+ Add from Price Book</button>
+            <button class="btn btn-ghost btn-sm" id="tplAddItemBlank">+ Add blank row</button>
+          </div>
+          <p class="hint">Materials carry a Cost, Mark-up% and Sell price that stay linked - edit any one and the others update.</p>
+
+          <div class="actions" style="margin-top:16px">
+            <button class="btn btn-primary" id="btnSaveTemplateEditor">Save Template</button>
+            <button class="btn btn-ghost" id="btnCancelTemplateEditor">Cancel</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ SAVED QUOTES ============================ -->
+      <section id="tab-saved" class="tabpanel" style="display:none">
+        <div class="card">
+          <h2>Saved Quotes</h2>
+          <div class="grid cols4" style="align-items:end;">
+            <div><label>From</label><input type="date" id="filterFrom"></div>
+            <div><label>To</label><input type="date" id="filterTo"></div>
+            <div><label>Status</label>
+              <select id="filterStatus">
+                <option value="">All</option>
+                <option value="Draft">Draft</option>
+                <option value="Approval Required">Approval Required</option>
+                <option value="Sent to Jobber">Sent to Jobber</option>
+              </select>
+            </div>
+            <div><label>Prepared By</label><input type="text" id="filterPreparedBy" placeholder="email, exact match"></div>
+          </div>
+          <div class="grid cols4" style="align-items:end;margin-top:12px">
+            <div style="grid-column:1/-1"><label>Search (client / quote no. / property)</label><input type="text" id="filterSearch" placeholder="Type to search..."></div>
+          </div>
+          <div class="addbar" style="margin-top:14px">
+            <button class="btn btn-navy btn-sm" id="applyFilters">Apply Filters</button>
+            <button class="btn btn-ghost btn-sm" id="clearFilters">Clear</button>
+            <button class="btn btn-outline btn-sm" id="copyTableBtn" style="margin-left:auto">Copy Table</button>
+          </div>
+          <div style="overflow-x:auto;margin-top:14px">
+            <table id="savedTable">
+              <thead><tr><th>Date</th><th>Quote No.</th><th>Status</th><th>Client</th><th>Property</th><th>Prepared By</th><th class="num">Grand Total</th><th style="width:290px"></th></tr></thead>
+              <tbody id="savedBody"></tbody>
+            </table>
+          </div>
+          <p class="hint" id="savedCount" style="margin-top:10px"></p>
+        </div>
+      </section>
+
+      <!-- ============================ SETTINGS (admin) ============================ -->
+      <section id="tab-settings" class="tabpanel" style="display:none">
+        <div class="card" id="companySettingsCard">
+          <h2>Company Settings</h2>
+          <p class="hint" style="margin-bottom:14px">These apply to every quote by default (a quote can still override VAT/transport/call-out per-job). Admin-only.</p>
+          <div class="grid cols4">
+            <div><label>VAT %</label><input type="number" id="setVatPct" step="0.5" min="0"></div>
+            <div><label>Max Discount %</label><input type="number" id="setMaxDiscountPct" step="1" min="0" max="100"></div>
+            <div><label>Default Hourly Rate (AED)</label><input type="number" id="setHourlyRate" step="1" min="0"></div>
+            <div><label>Default Material Mark-up %</label><input type="number" id="setDefaultMaterialMarkupPct" step="1" min="0"></div>
+            <div><label>Transport Fee (AED)</label><input type="number" id="setTransportFee" step="1" min="0"></div>
+            <div><label>Call-Out Fee (AED)</label><input type="number" id="setCallOutFee" step="1" min="0"></div>
+            <div><label>Margin Minimum %</label><input type="number" id="setMarginMinPct" step="1" min="0"></div>
+            <div><label>Margin Target %</label><input type="number" id="setMarginTargetPct" step="1" min="0"></div>
+            <div><label>Margin Upper %</label><input type="number" id="setMarginUpperPct" step="1" min="0"></div>
+          </div>
+          <div class="actions" style="margin-top:14px">
+            <button class="btn btn-primary btn-sm" id="btnSaveSettings">Save Company Settings</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ USERS & ACCESS (admin) ============================ -->
+      <section id="tab-users" class="tabpanel" style="display:none">
+        <div class="card" id="usersCard">
+          <h2>Users &amp; Access</h2>
+          <p class="hint" style="margin-bottom:14px">Anyone with an @handyman.ae, @kenzieclean.ae or @legacygroup.me email can sign in and starts as staff. Add someone below (before or after they've ever signed in) and set their role - signing in never overwrites a role you've set.</p>
+          <div style="overflow-x:auto">
+            <table id="usersTable">
+              <thead><tr><th>Email</th><th>Name</th><th>Last Login</th><th style="width:160px">Role</th><th style="width:90px"></th></tr></thead>
+              <tbody id="usersBody"></tbody>
+            </table>
+          </div>
+          <p class="hint" id="usersEmpty" style="display:none">No one has signed in yet.</p>
+
+          <div class="addbar no-print" style="margin-top:18px">
+            <input type="text" id="newUserName" placeholder="Name (optional)" style="max-width:180px">
+            <input type="email" id="newUserEmail" placeholder="email@handyman.ae">
+            <select id="newUserRole" style="max-width:110px"><option value="staff">Staff</option><option value="admin">Admin</option></select>
+            <button class="btn btn-orange btn-sm" id="btnAddUser">+ Add User</button>
+          </div>
+          <div id="allowlistList" style="margin-top:10px"></div>
+        </div>
+      </section>
+
+      <!-- ============================ AMC TRACKER ============================ -->
+      <section id="tab-amc" class="tabpanel" style="display:none">
+        <div class="card" style="margin-bottom:16px">
+          <div class="amc-subnav" id="amcSubnav">
+            <button class="amc-subtab active" data-amc="dashboard">Dashboard</button>
+            <button class="amc-subtab" data-amc="tracker">Contracts &amp; Servicing <span class="amc-count" id="amcCntTracker">0</span></button>
+            <button class="amc-subtab" data-amc="actions">Today's Actions <span class="amc-count" id="amcCntActions">0</span></button>
+            <button class="amc-subtab" data-amc="add">Add Client</button>
+            <button class="amc-subtab" data-amc="history">Contract History</button>
+          </div>
+        </div>
+
+        <!-- ---- AMC: Dashboard ---- -->
+        <div class="amc-panel active" id="amc-dashboard">
+          <div class="card">
+            <h2 class="plain">Operations dashboard</h2>
+            <p class="hint" style="margin-bottom:16px">Every figure below is calculated live from Contracts &amp; Servicing — nothing here is typed in by hand.</p>
+            <div class="grid cols4" id="amcKpiRow" style="margin-bottom:0"></div>
+          </div>
+          <div class="grid cols2">
+            <div class="card">
+              <h2>Clients Behind Schedule</h2>
+              <ul class="amc-flag-list" id="amcBehindList"></ul>
+            </div>
+            <div class="card">
+              <h2>Package Split (Active Contracts)</h2>
+              <div id="amcSplitChart"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- AMC: Tracker ---- -->
+        <div class="amc-panel" id="amc-tracker" style="display:none">
+          <div class="card">
+            <h2 class="plain">Contracts &amp; Servicing</h2>
+            <p class="hint" style="margin-bottom:16px">Contracts, AC PPM visits, water tank cleaning and handyman tracking — one row per client. Click a row to open it and log a visit.</p>
+            <div class="addbar" style="margin-bottom:14px">
+              <input type="text" id="amcTrkSearch" placeholder="Search client or location...">
+              <select id="amcTrkPkg" style="max-width:160px">
+                <option value="">All packages</option>
+                <option>Basic</option><option>Standard</option><option>Premium</option>
+              </select>
+              <select id="amcTrkStatus" style="max-width:180px">
+                <option value="">All statuses</option>
+                <option value="behind">Behind schedule</option>
+                <option value="ontrack">On track</option>
+                <option value="complete">All visits complete</option>
+              </select>
+              <span class="hint" id="amcTrkCount" style="margin:0 8px;white-space:nowrap"></span>
+              <button class="btn btn-orange btn-sm" id="amcBtnGoAdd" style="margin-left:auto">+ Add Client</button>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="amc-table" id="amcTrackerTable">
+                <thead><tr>
+                  <th style="width:20px"></th><th>Client</th><th>Package</th><th>Start</th><th>End</th>
+                  <th class="num">Days Left</th><th>Renewal</th><th>Payment</th>
+                  <th>V1</th><th>V2</th><th>V3</th><th>V4</th><th>PPM Status</th><th>WTC</th>
+                </tr></thead>
+                <tbody id="amcTrackerBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- AMC: Today's Actions ---- -->
+        <div class="amc-panel" id="amc-actions" style="display:none">
+          <div class="card">
+            <h2 class="plain">Today's Actions</h2>
+            <p class="hint">Built automatically from the tracker every time you open this tab. Tick an item off once it's handled — it greys out but stays on the list for the day.</p>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);margin:10px 0 0;font-weight:600;text-transform:none">
+              <input type="checkbox" id="amcHideHandled" style="width:15px;height:15px"> Hide handled items
+            </label>
+          </div>
+
+          <div class="card">
+            <h3 class="amc-section-title">🔴 Renewals Due <span class="band-badge critical" id="amcCntRenewals">0</span></h3>
+            <p class="hint" style="margin-bottom:12px">Contracts expiring within 30 days. Send the renewal notice at 14 days out.</p>
+            <div id="amcListRenewals"></div>
+          </div>
+          <div class="card">
+            <h3 class="amc-section-title">🟠 Payments Needing Attention <span class="band-badge warn" id="amcCntPayments">0</span></h3>
+            <p class="hint" style="margin-bottom:12px">Unpaid balances or 50/50 contracts with a balance still due.</p>
+            <div id="amcListPayments"></div>
+          </div>
+          <div class="card">
+            <h3 class="amc-section-title">🔵 AC PPM Visits Overdue <span class="band-badge above" id="amcCntVisits">0</span></h3>
+            <p class="hint" style="margin-bottom:12px">Due date has passed with no completion date logged.</p>
+            <div id="amcListVisits"></div>
+          </div>
+        </div>
+
+        <!-- ---- AMC: Add Client ---- -->
+        <div class="amc-panel" id="amc-add" style="display:none">
+          <div class="card">
+            <h2 class="plain">Add a New AMC Client</h2>
+            <p class="hint" style="margin-bottom:16px">Fill this in once. The AC PPM visit schedule, renewal alert and on-track status are all generated automatically.</p>
+            <form id="amcAddForm" novalidate>
+              <div class="grid cols2">
+                <div><label>Customer Name *</label><input type="text" id="amcFCustomer"></div>
+                <div><label>Location / Area *</label><input type="text" id="amcFLocation"></div>
+                <div style="grid-column:1/-1"><label>Full Address</label><input type="text" id="amcFAddress"></div>
+                <div><label>Package *</label>
+                  <select id="amcFPackage"><option value="">Select...</option><option>Basic</option><option>Standard</option><option>Premium</option></select>
+                </div>
+                <div><label>Owner / Tenant</label>
+                  <select id="amcFOwnerTenant"><option>Owner</option><option>Tenant</option><option>Commercial</option></select>
+                </div>
+                <div><label>Contract Start *</label><input type="date" id="amcFStart"></div>
+                <div><label>Contract End * <a href="#" id="amcLnkOneYear" style="font-weight:600;margin-left:6px;">(set to 1 year from start)</a></label><input type="date" id="amcFEnd"></div>
+                <div><label>Payment Type</label>
+                  <select id="amcFPayType"><option>Upfront</option><option>50/50</option><option>Monthly</option><option>FOC</option></select>
+                </div>
+                <div><label>Payment Status</label>
+                  <select id="amcFPayStatus"><option>Paid</option><option>50% Paid</option><option>Unpaid</option><option>FOC</option></select>
+                </div>
+                <div style="grid-column:1/-1"><label>Payment Notes</label><input type="text" id="amcFPayNotes" placeholder="e.g. Paid 10-Jun-2026, or 50% paid, balance due Dec"></div>
+              </div>
+              <div class="amc-schedule-preview" id="amcSchedulePreview">Select a package and start date to preview the AC PPM visit schedule.</div>
+              <p class="hint amc-form-errors" id="amcFormErrors" style="display:none"></p>
+              <div class="actions" style="margin-top:16px">
+                <button type="submit" class="btn btn-primary">Save Client</button>
+                <button type="button" class="btn btn-ghost" id="amcBtnFormClear">Clear Form</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- ---- AMC: Contract History ---- -->
+        <div class="amc-panel" id="amc-history" style="display:none">
+          <div class="card">
+            <h2 class="plain">Contract History</h2>
+            <p class="hint" style="margin-bottom:16px">Every contract year on record, active and expired.</p>
+            <div class="addbar" style="margin-bottom:14px">
+              <input type="text" id="amcHistSearch" placeholder="Search client...">
+              <span class="hint" id="amcHistCount" style="margin:0 8px;white-space:nowrap"></span>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="amc-table">
+                <thead><tr>
+                  <th>Customer</th><th>Location</th><th>Year</th><th>Package</th>
+                  <th>Start</th><th>End</th><th>Status</th><th>Payment</th><th>Notes</th>
+                </tr></thead>
+                <tbody id="amcHistoryBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ AMC PROPOSALS ============================ -->
+      <section id="tab-amc-proposals" class="tabpanel" style="display:none">
+        <div class="card" style="margin-bottom:16px">
+          <div class="amc-subnav" id="apSubnav">
+            <button class="amc-subtab active" data-ap="builder">Proposal Builder</button>
+            <button class="amc-subtab" data-ap="contract">Contract Builder</button>
+            <button class="amc-subtab" data-ap="log">Sent Log <span class="amc-count" id="apCntLog">0</span></button>
+          </div>
+        </div>
+
+        <!-- ---- Proposal Builder ---- -->
+        <div class="amc-panel active" id="ap-builder">
+          <div class="card">
+            <h2 class="plain">Proposal Builder</h2>
+            <p class="hint" style="margin-bottom:16px">Fill in the details below — the three package prices update live. Generate to create a real, permanently-saved PDF proposal.</p>
+            <div class="grid cols3">
+              <div class="field"><label>Client name</label><input type="text" id="apClientName" placeholder="e.g. Mr Ahmed Al Marri"></div>
+              <div class="field"><label>Property / unit</label><input type="text" id="apPropAddr" placeholder="e.g. Villa 42, MAG City"></div>
+              <div class="field"><label>Property type</label>
+                <select id="apPropType">
+                  <option value="apartment">Apartment</option>
+                  <option value="villa">Villa / Townhouse</option>
+                  <option value="commercial">Commercial / Retail</option>
+                </select>
+              </div>
+              <div class="field"><label>AC units</label><select id="apAcUnits"></select></div>
+              <div class="field"><label>Valid for</label>
+                <select id="apValidity">
+                  <option value="7">7 days</option>
+                  <option value="14">14 days</option>
+                  <option value="30" selected>30 days</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="card" id="apCommRatesCard" style="display:none;margin-top:14px;background:var(--wash)">
+              <h2 class="plain" style="font-size:14px">Commercial rates for this team</h2>
+              <p class="hint" style="margin-bottom:10px">Price = base + (rate per AC unit × units), incl. 5% VAT. Saved for this team — changes apply to every future commercial proposal/contract.</p>
+              <div class="grid cols3">
+                <div class="field"><label>Basic base / per unit</label>
+                  <div style="display:flex;gap:6px"><input type="number" id="apRBasicBase" style="width:50%"><input type="number" id="apRBasicPer" style="width:50%"></div>
+                </div>
+                <div class="field"><label>Standard base / per unit</label>
+                  <div style="display:flex;gap:6px"><input type="number" id="apRStandardBase" style="width:50%"><input type="number" id="apRStandardPer" style="width:50%"></div>
+                </div>
+                <div class="field"><label>Premium base / per unit</label>
+                  <div style="display:flex;gap:6px"><input type="number" id="apRPremiumBase" style="width:50%"><input type="number" id="apRPremiumPer" style="width:50%"></div>
+                </div>
+              </div>
+              <button class="btn ghost" id="apBtnSaveRates" style="margin-top:10px">Save Rates</button>
+            </div>
+
+            <div class="amc-section-title" style="margin-top:16px">Negotiate a custom price (optional)</div>
+            <p class="hint" style="margin-bottom:8px">Leave blank to use the standard price. Only affects this proposal's PDF — contracts always use the real rate book.</p>
+            <div class="grid cols3">
+              <div class="field"><label>Override Basic (AED)</label><input type="number" id="apOverrideBasic" placeholder="auto"></div>
+              <div class="field"><label>Override Standard (AED)</label><input type="number" id="apOverrideStandard" placeholder="auto"></div>
+              <div class="field"><label>Override Premium (AED)</label><input type="number" id="apOverridePremium" placeholder="auto"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2 class="plain">Live preview</h2>
+            <div class="grid cols3" id="apPreviewCards" style="margin-top:10px"></div>
+          </div>
+
+          <div class="card">
+            <button class="btn" id="apBtnGenerate">Generate &amp; Download Proposal PDF</button>
+            <span class="hint" id="apGenerateHint" style="margin-left:10px"></span>
+          </div>
+        </div>
+
+        <!-- ---- Contract Builder ---- -->
+        <div class="amc-panel" id="ap-contract" style="display:none">
+          <div class="card">
+            <h2 class="plain">Contract Builder</h2>
+            <p class="hint" style="margin-bottom:16px">Generates the full 9-page Annual Maintenance Contract PDF. Use "Create Contract" from a proposal's price card to pre-fill this from an existing proposal.</p>
+            <div class="grid cols3">
+              <div class="field"><label>Client name</label><input type="text" id="acClientName" placeholder="e.g. Mr Ahmed Al Marri"></div>
+              <div class="field"><label>Property / unit</label><input type="text" id="acPropAddr" placeholder="e.g. Villa 42, MAG City"></div>
+              <div class="field"><label>Property type</label>
+                <select id="acPropType">
+                  <option value="apartment">Apartment</option>
+                  <option value="villa">Villa / Townhouse</option>
+                  <option value="commercial">Commercial / Retail</option>
+                </select>
+              </div>
+              <div class="field"><label>AC units</label><select id="acAcUnits"></select></div>
+              <div class="field"><label>Package</label>
+                <select id="acPackage">
+                  <option value="Basic">Basic</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Premium">Premium</option>
+                </select>
+              </div>
+              <div class="field"><label>Payment plan</label>
+                <select id="acPayPlan">
+                  <option value="onetime">One-Time Payment</option>
+                  <option value="monthly">Monthly Plan</option>
+                </select>
+              </div>
+              <div class="field"><label>Start date</label><input type="date" id="acStartDate"></div>
+              <div class="field"><label>Signed for handyman.ae by</label>
+                <select id="acSignatory">
+                  <option value="tegan">Tegan Bradley</option>
+                  <option value="kristofer">Kristofer Miranda</option>
+                  <option value="govind">Govind Singh Rawat</option>
+                </select>
+              </div>
+            </div>
+            <div class="hint" id="acContractValueHint" style="margin-top:10px"></div>
+            <div class="amc-form-errors" id="acFormErrors" style="display:none"></div>
+            <div style="margin-top:14px">
+              <button class="btn" id="acBtnGenerate">Generate &amp; Download Contract PDF</button>
+              <button class="btn ghost" id="acBtnClear">Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- Sent Log ---- -->
+        <div class="amc-panel" id="ap-log" style="display:none">
+          <div class="card">
+            <h2 class="plain">Proposals sent</h2>
+            <p class="hint" style="margin-bottom:14px">Every proposal generated is a permanent, downloadable record — nothing here is typed in by hand.</p>
+            <div style="overflow-x:auto">
+              <table class="amc-table">
+                <thead><tr>
+                  <th>Date</th><th>Client</th><th>Property</th><th>Type</th><th>AC</th>
+                  <th>Basic</th><th>Standard</th><th>Premium</th><th>Valid until</th><th>Sent by</th><th></th>
+                </tr></thead>
+                <tbody id="apProposalLogBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h2 class="plain">Contracts issued</h2>
+            <div style="overflow-x:auto">
+              <table class="amc-table">
+                <thead><tr>
+                  <th>Date</th><th>Client</th><th>Property</th><th>Package</th><th>Plan</th>
+                  <th>Start</th><th>Signatory</th><th>Value</th><th>Created by</th><th></th>
+                </tr></thead>
+                <tbody id="apContractLogBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>

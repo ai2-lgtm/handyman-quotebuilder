@@ -1,0 +1,10 @@
+# Local SQLite database - real business data. Railway uses a persistent
+# Volume mounted at DATA_DIR instead; this file must never be committed.
+data/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Claude Code's own session/config directory - not part of the product.
+.claude/

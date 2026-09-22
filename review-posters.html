@@ -1,0 +1,210 @@
+<title>Review Us Posters</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&display=swap');
+
+  :root{
+    --navy:#02265E; --orange:#FA6006;
+    --paper:#faf5ea; --card:#ffffff;
+    --ink:#12182a; --ink-soft:#5b6178;
+    --line:#e7dfc9; --line-soft:#f0ead9;
+    --star:#FA6006;
+    --display:'Archivo Black',Arial Black,Impact,sans-serif;
+    --sans:'Archivo',-apple-system,'Segoe UI',sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:#e9e2d1;color:var(--ink);font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  .stage{
+    display:flex;flex-wrap:wrap;gap:36px;justify-content:center;align-items:flex-start;
+    padding-inline:24px;padding-block:40px;
+  }
+
+  .poster{
+    width:210mm;height:297mm;flex:0 0 auto;
+    background:var(--paper);color:var(--ink);
+    border-radius:6px;box-shadow:0 18px 50px -12px rgba(2,38,94,.35);
+    display:flex;flex-direction:column;
+    padding:16mm 15mm 13mm;
+    position:relative;
+    overflow:hidden;
+  }
+  .poster::before{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--orange) 14%, transparent) 0%, transparent 42%),
+      radial-gradient(circle at 0% 100%, color-mix(in srgb, var(--navy) 10%, transparent) 0%, transparent 46%);
+    pointer-events:none;
+  }
+
+  .brand-row{display:flex;align-items:center;gap:10px;position:relative;z-index:1;}
+  .logo-mark{width:34px;height:34px;border-radius:9px;background:var(--navy);position:relative;flex:0 0 auto;}
+  .logo-mark::after{content:"";position:absolute;left:50%;top:50%;width:13px;height:13px;background:var(--orange);border-radius:50%;transform:translate(-50%,-50%);}
+  .brand-name{font-family:var(--display);font-size:16px;letter-spacing:.01em;color:var(--navy);}
+  .brand-sub{font-size:10px;color:var(--ink-soft);margin-top:1px;font-weight:500;}
+  .location-chip{
+    margin-left:auto;font-family:var(--sans);font-weight:700;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;
+    background:var(--navy);color:#fff;padding:7px 16px;border-radius:20px;
+  }
+
+  .stars{display:flex;gap:6px;margin:46px 0 22px;position:relative;z-index:1;}
+  .stars svg{width:26px;height:26px;fill:var(--star);}
+
+  .eyebrow{
+    font-size:13px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--orange);
+    margin:0 0 10px;position:relative;z-index:1;
+  }
+  h1{
+    font-family:var(--display);font-weight:400;color:var(--navy);
+    font-size:56px;line-height:1.04;margin:0 0 18px;text-wrap:balance;position:relative;z-index:1;
+    max-width:9.2em;
+  }
+  .lede{
+    font-size:16.5px;line-height:1.55;color:var(--ink);max-width:34ch;margin:0;position:relative;z-index:1;
+    font-weight:500;
+  }
+
+  .qr-block{
+    margin-top:auto;padding-top:34px;
+    display:flex;align-items:flex-end;gap:22px;position:relative;z-index:1;
+  }
+  .qr-card{
+    background:var(--card);border-radius:16px;padding:16px;flex:0 0 auto;
+    box-shadow:0 10px 26px -10px rgba(2,38,94,.28);
+    border:1px solid var(--line);
+  }
+  .qr-card canvas, .qr-card img{display:block;width:150px;height:150px;border-radius:4px;}
+
+  .qr-copy{flex:1;padding-bottom:6px;}
+  .qr-copy .scan-cta{font-family:var(--display);font-size:19px;color:var(--navy);font-weight:400;margin:0 0 6px;line-height:1.15;text-wrap:balance;}
+  .qr-copy .scan-sub{font-size:12.5px;color:var(--ink-soft);line-height:1.5;margin:0;max-width:30ch;}
+  .qr-copy .fallback{
+    margin-top:10px;font-size:11px;color:var(--ink-soft);font-weight:600;
+    border-top:1px dashed var(--line);padding-top:9px;
+  }
+  .qr-copy .fallback b{color:var(--ink);}
+
+  .thankyou{
+    margin-top:24px;padding-top:16px;border-top:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;
+    font-size:10.5px;color:var(--ink-soft);position:relative;z-index:1;
+  }
+  .thankyou .thanks-line{font-weight:700;color:var(--navy);font-size:12px;}
+
+  @media print{
+    body{background:#fff;padding:0;}
+    .stage{padding:0;gap:0;}
+    .poster{box-shadow:none;border-radius:0;page-break-after:always;width:210mm;height:297mm;margin:0;}
+    .poster:last-child{page-break-after:auto;}
+  }
+  @page{size:A4;margin:0;}
+
+  @media (max-width:480px){
+    .stage{padding-inline:12px;}
+    .poster{width:100%;height:auto;min-height:130vw;padding:9vw 7vw;}
+    h1{font-size:11vw;}
+  }
+</style>
+
+<div class="stage">
+
+  <div class="poster" id="posterDubai">
+    <div class="brand-row">
+      <div class="logo-mark"></div>
+      <div>
+        <div class="brand-name">HANDYMAN.AE</div>
+        <div class="brand-sub">GIJO Technical Services LLC</div>
+      </div>
+      <div class="location-chip">Dubai</div>
+    </div>
+
+    <div class="stars" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+    </div>
+
+    <p class="eyebrow">After your visit</p>
+    <h1>How did<br>we do?</h1>
+    <p class="lede">If our technician sorted you out today, a quick Google review helps the next Dubai home find us too. Takes about 30 seconds.</p>
+
+    <div class="qr-block">
+      <div class="qr-card"><div id="qrDubai"></div></div>
+      <div class="qr-copy">
+        <p class="scan-cta">Scan to leave<br>a review</p>
+        <p class="scan-sub">Point your phone's camera at the code — no app needed.</p>
+        <p class="fallback">Can't scan? Search <b>"Dubai's Handyman"</b> on Google Maps.</p>
+      </div>
+    </div>
+
+    <div class="thankyou">
+      <span class="thanks-line">Thank you for having us in your home.</span>
+      <span>Handyman.ae · Dubai</span>
+    </div>
+  </div>
+
+  <div class="poster" id="posterMagCity">
+    <div class="brand-row">
+      <div class="logo-mark"></div>
+      <div>
+        <div class="brand-name">HANDYMAN.AE</div>
+        <div class="brand-sub">GIJO Technical Services LLC</div>
+      </div>
+      <div class="location-chip">MAG City</div>
+    </div>
+
+    <div class="stars" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M12 1l3.09 6.26L22 8.27l-5 4.87 1.18 6.88L12 16.9l-6.18 3.12L7 13.14 2 8.27l6.91-1.01L12 1z"/></svg>
+    </div>
+
+    <p class="eyebrow">After your visit</p>
+    <h1>How did<br>we do?</h1>
+    <p class="lede">If our technician sorted you out today, a quick Google review helps the next MAG City home find us too. Takes about 30 seconds.</p>
+
+    <div class="qr-block">
+      <div class="qr-card"><div id="qrMagCity"></div></div>
+      <div class="qr-copy">
+        <p class="scan-cta">Scan to leave<br>a review</p>
+        <p class="scan-sub">Point your phone's camera at the code — no app needed.</p>
+        <p class="fallback">Can't scan? Search <b>"Handyman.ae Mag City"</b> on Google Maps.</p>
+      </div>
+    </div>
+
+    <div class="thankyou">
+      <span class="thanks-line">Thank you for having us in your home.</span>
+      <span>Handyman.ae · MAG City</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  var DUBAI_URL = "https://www.google.com/maps/place/Handyman.ae+%7C+Dubai's+Handyman/@25.087942,55.1475,17z/data=!4m8!3m7!1s0x3e5f6bc4e84f9dd5:0xf02f433a71111caf!8m2!3d25.087942!4d55.1475!9m1!1b1!16s%2Fg%2F11l6br3cvm";
+  var MAGCITY_URL = "https://www.google.com/maps/place/Handyman.ae+%7C+Mag+City+%7C+980/@25.1436354,55.2849651,17z/data=!3m1!4b1!4m6!3m5!1s0x3e5f69a9e3a96cdd:0xb3983e523ff5bd5!8m2!3d25.1436354!4d55.28754!16s%2Fg%2F11nv9m_c2b";
+
+  // Correction level L (not the usual H): these are long Google Maps URLs
+  // (~200 chars) - H's heavier error-correction overhead pushes them past
+  // this library's capacity ceiling and throws "code length overflow".
+  // L still scans reliably for a clean-printed poster read at close range.
+  new QRCode(document.getElementById("qrDubai"), {
+    text: DUBAI_URL, width: 600, height: 600,
+    colorDark: "#02265E", colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.L
+  });
+  new QRCode(document.getElementById("qrMagCity"), {
+    text: MAGCITY_URL, width: 600, height: 600,
+    colorDark: "#02265E", colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.L
+  });
+</script>

@@ -164,6 +164,10 @@
         if (btn.dataset.tab === "saved") loadSaved();
         if (btn.dataset.tab === "home") loadHome();
         if (btn.dataset.tab === "templates") loadTemplates();
+        if (btn.dataset.tab === "settings") loadCompanySettingsForm();
+        if (btn.dataset.tab === "users") loadUsers();
+        if (btn.dataset.tab === "amc") loadAmcAll();
+        if (btn.dataset.tab === "amc-proposals") loadAmcProposalsAll();
       });
     });
   }
@@ -173,18 +177,76 @@
     if (btn) btn.click();
   }
 
+  // ------------------------------------------------------------------
+  // Location / team switch (Dubai vs MAG City) - Materials, Labour, Fixed
+  // Services and Suppliers are catalogued separately per team; Contractors
+  // stay global since a subcontractor may serve either location.
+  // ------------------------------------------------------------------
+  var TEAM_STORAGE_KEY = "handyman_active_team_v1";
+  var TEAM_LABELS = { dubai: "Dubai", magcity: "MAG City" };
+  var ACTIVE_TEAM = localStorage.getItem(TEAM_STORAGE_KEY) || "dubai";
+
+  function initTeamSwitch() {
+    var wrap = document.getElementById("teamSwitch");
+    if (!wrap) return;
+    renderTeamSwitch();
+    wrap.querySelectorAll(".team-pill").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (btn.dataset.team === ACTIVE_TEAM) return;
+        ACTIVE_TEAM = btn.dataset.team;
+        localStorage.setItem(TEAM_STORAGE_KEY, ACTIVE_TEAM);
+        renderTeamSwitch();
+        toast(TEAM_LABELS[ACTIVE_TEAM] + " catalog active");
+        onTeamChanged();
+      });
+    });
+  }
+
+  function renderTeamSwitch() {
+    document.querySelectorAll("#teamSwitch .team-pill").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.team === ACTIVE_TEAM);
+    });
+    var lbl = document.getElementById("pbSuppliersTeamLabel");
+    if (lbl) lbl.textContent = TEAM_LABELS[ACTIVE_TEAM];
+  }
+
+  function onTeamChanged() {
+    if (document.getElementById("tab-pricebook").style.display !== "none") {
+      reloadPbMaterials(); reloadPbLabour(); reloadPbFixed(); reloadPbSuppliers();
+    }
+    if (document.getElementById("tab-builder").style.display !== "none") {
+      loadCatalogIntoBuilder();
+    }
+    if (document.getElementById("tab-amc").style.display !== "none") {
+      loadAmcAll();
+    }
+    if (document.getElementById("tab-amc-proposals").style.display !== "none") {
+      loadAmcProposalsAll();
+    }
+  }
+
   // ==================================================================
   // NEW QUOTE (formerly "Quote Builder")
   // ==================================================================
   var STORAGE_KEY = "handyman_quote_draft_v4";
   var builder = null;
-  var PB_CATALOG = { materials: [], labour: [], fixedServices: [] };
+  var PB_CATALOG = { materials: [], labour: [], fixedServices: [], contractors: [] };
+
+  var LAST_STAFF_TECH_KEY = "handyman_last_staff_tech_v1";
+  function rememberLastStaffTech(staff, technician) {
+    try { localStorage.setItem(LAST_STAFF_TECH_KEY, JSON.stringify({ staff: staff || "", technician: technician || "" })); } catch (e) {}
+  }
+  function lastStaffTech() {
+    try { var raw = localStorage.getItem(LAST_STAFF_TECH_KEY); if (raw) return JSON.parse(raw); } catch (e) {}
+    return { staff: "", technician: "" };
+  }
 
   function defaultBuilderState() {
     var date = todayISO();
+    var last = lastStaffTech();
     return {
       id: null, quoteNo: "(assigned on save)", quoteSeq: null, status: "Draft", revisionNumber: 1,
-      date: date, validUntil: addDays(date, 14), staff: "", technician: "", preparedBy: CURRENT_USER,
+      date: date, validUntil: addDays(date, 14), staff: last.staff, technician: last.technician, preparedBy: CURRENT_USER,
       createdBy: CURRENT_USER,
       client: { name: "", phone: "", address: "", email: "" },
       duration: "", scope: "", internalNotes: "",
@@ -303,6 +365,11 @@
       list = PB_CATALOG.labour.filter(function (l) { return l.labourType === wantType; }).map(function (l) {
         return { label: l.roleName + " — AED " + fmt(l.defaultSell || l.cost || 0), cost: l.cost || 0, sell: l.defaultSell == null ? (l.cost || 0) : l.defaultSell, desc: l.roleName, id: l.id };
       });
+      if (kind === "outside_labour") {
+        list = list.concat(flattenContractorRates().map(function (r) {
+          return { label: r.label + " — AED " + (r.sell == null ? "TBD" : fmt(r.sell)), cost: r.cost || 0, sell: r.sell == null ? 0 : r.sell, desc: r.desc, id: r.id };
+        }));
+      }
     } else if (kind === "fixed_service") {
       list = PB_CATALOG.fixedServices.map(function (f) {
         return { label: (f.category ? f.category + " - " : "") + f.serviceName + " — AED " + fmt(f.standardSell || f.estimatedCost || 0), cost: f.estimatedCost || 0, sell: f.standardSell == null ? (f.estimatedCost || 0) : f.standardSell, desc: f.serviceName, id: f.id };
@@ -325,12 +392,25 @@
 
   function loadCatalogIntoBuilder() {
     return Promise.all([
-      API.get("/api/pricebook/materials").then(function (d) { PB_CATALOG.materials = d.materials; }),
-      API.get("/api/pricebook/labour").then(function (d) { PB_CATALOG.labour = d.labour; }),
-      API.get("/api/pricebook/fixed-services").then(function (d) { PB_CATALOG.fixedServices = d.fixedServices; })
+      API.get("/api/pricebook/materials" + pbTeamQuery()).then(function (d) { PB_CATALOG.materials = d.materials; }),
+      API.get("/api/pricebook/labour" + pbTeamQuery()).then(function (d) { PB_CATALOG.labour = d.labour; }),
+      API.get("/api/pricebook/fixed-services" + pbTeamQuery()).then(function (d) { PB_CATALOG.fixedServices = d.fixedServices; }),
+      API.get("/api/pricebook/contractors").then(function (d) { PB_CATALOG.contractors = d.contractors; })
     ]).then(function () {
       populateItemCatalogSelect();
     }).catch(function () { toast("Could not reach the server for the price book"); });
+  }
+
+  // Flattens every contractor's rate-card rows into one list of {label, sell, cost, id}
+  // entries, used to offer contractor rates as Outside Labour catalog items.
+  function flattenContractorRates() {
+    var out = [];
+    (PB_CATALOG.contractors || []).forEach(function (c) {
+      (c.pricing || []).forEach(function (p) {
+        out.push({ label: c.name + " — " + p.label, sell: p.price, cost: null, desc: c.name + " — " + p.label, id: "contractor:" + c.id + ":" + p.id });
+      });
+    });
+    return out;
   }
 
   // Looks up a wizard service's own Fixed Service / Labour Price Book entry
@@ -737,7 +817,7 @@
       builder.items.push(row);
       renderItemsTable(); recalcBuilder(); saveDraft();
     });
-    document.getElementById("itemKindSelect").addEventListener("change", populateItemCatalogSelect);
+    document.getElementById("itemKindSelect").addEventListener("change", function () { populateItemCatalogSelect(); });
 
     document.getElementById("btnPrint").addEventListener("click", function () { window.print(); });
     document.getElementById("btnWhatsapp").addEventListener("click", function () {
@@ -751,6 +831,8 @@
       var req = builder.id ? API.put("/api/quotes/" + builder.id, payload) : API.post("/api/quotes", payload);
       req.then(function (saved) {
         loadQuoteIntoBuilder(saved);
+        rememberLastStaffTech(saved.staff, saved.technician);
+        loadAutocompleteLists();
         toast("Quote saved — " + saved.quoteNo);
       }).catch(function (e) {
         toast(e.message || "Could not save quote — is the server running?");
@@ -805,10 +887,30 @@
     builder = draft || defaultBuilderState();
     document.getElementById("companyFooter").textContent =
       COMPANY.legal + " · " + COMPANY.address + " · Licence " + COMPANY.licence + " · " + COMPANY.email + " · " + COMPANY.web;
+    var printName = document.getElementById("printHeaderName");
+    var printSub = document.getElementById("printHeaderSub");
+    if (printName) printName.textContent = COMPANY.name;
+    if (printSub) printSub.textContent = COMPANY.legal + " · " + COMPANY.address + " · " + COMPANY.email + " · " + COMPANY.web;
     bindBuilderFields();
     wireBuilderActions();
     initBuilderView();
     loadCatalogIntoBuilder();
+    loadAutocompleteLists();
+  }
+
+  // Technician / Client / Property autocomplete, sourced from prior saved
+  // quotes (most recently used first).
+  function loadAutocompleteLists() {
+    API.get("/api/quotes/autocomplete").then(function (d) {
+      fillDatalist("techList", d.technicians);
+      fillDatalist("clientList", d.clients);
+      fillDatalist("propertyList", d.properties);
+    }).catch(function () {});
+  }
+  function fillDatalist(id, values) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = (values || []).map(function (v) { return '<option value="' + escapeAttr(v) + '">'; }).join("");
   }
 
   // ==================================================================
@@ -1030,7 +1132,8 @@
     reloadPbMaterials();
     reloadPbLabour();
     reloadPbFixed();
-    if (CURRENT_USER_ROLE === "admin") { loadCompanySettingsForm(); loadUsers(); }
+    reloadPbSuppliers();
+    reloadPbContractors();
   }
 
   function loadUsers() {
@@ -1139,26 +1242,47 @@
     });
   }
 
+  function pbTeamQuery(extra) {
+    var params = ["team=" + encodeURIComponent(ACTIVE_TEAM)];
+    if (extra) params.push(extra);
+    return "?" + params.join("&");
+  }
+
   function reloadPbMaterials() {
     var q = document.getElementById("pbMaterialsSearch").value;
-    API.get("/api/pricebook/materials" + (q ? "?q=" + encodeURIComponent(q) : "")).then(function (d) {
+    API.get("/api/pricebook/materials" + pbTeamQuery(q ? "q=" + encodeURIComponent(q) : "")).then(function (d) {
       PB_CATALOG.materials = d.materials;
       renderPbMaterials(d.materials);
     }).catch(function () { toast("Could not load materials"); });
   }
   function reloadPbLabour() {
     var q = document.getElementById("pbLabourSearch").value;
-    API.get("/api/pricebook/labour" + (q ? "?q=" + encodeURIComponent(q) : "")).then(function (d) {
+    API.get("/api/pricebook/labour" + pbTeamQuery(q ? "q=" + encodeURIComponent(q) : "")).then(function (d) {
       PB_CATALOG.labour = d.labour;
       renderPbLabour(d.labour);
     }).catch(function () { toast("Could not load labour"); });
   }
   function reloadPbFixed() {
     var q = document.getElementById("pbFixedSearch").value;
-    API.get("/api/pricebook/fixed-services" + (q ? "?q=" + encodeURIComponent(q) : "")).then(function (d) {
+    API.get("/api/pricebook/fixed-services" + pbTeamQuery(q ? "q=" + encodeURIComponent(q) : "")).then(function (d) {
       PB_CATALOG.fixedServices = d.fixedServices;
       renderPbFixed(d.fixedServices);
     }).catch(function () { toast("Could not load fixed services"); });
+  }
+
+  function reloadPbSuppliers() {
+    var q = document.getElementById("pbSuppliersSearch").value;
+    API.get("/api/pricebook/suppliers" + pbTeamQuery(q ? "q=" + encodeURIComponent(q) : "")).then(function (d) {
+      renderPbSuppliers(d.suppliers);
+    }).catch(function () { toast("Could not load suppliers"); });
+  }
+
+  function reloadPbContractors() {
+    var q = document.getElementById("pbContractorsSearch").value;
+    API.get("/api/pricebook/contractors" + (q ? "?q=" + encodeURIComponent(q) : "")).then(function (d) {
+      PB_CATALOG.contractors = d.contractors;
+      renderPbContractors(d.contractors);
+    }).catch(function () { toast("Could not load contractors"); });
   }
 
   function pbEditableCell(value, onSave) {
@@ -1259,16 +1383,210 @@
     });
   }
 
+  function renderPbSuppliers(rows) {
+    var body = document.getElementById("pbSuppliersBody");
+    body.innerHTML = "";
+    var isAdmin = CURRENT_USER_ROLE === "admin";
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="8" class="hint">No suppliers yet for this location.</td></tr>';
+      return;
+    }
+    rows.forEach(function (s) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + escapeHtml(s.category || "—") + "</td><td>" + escapeHtml(s.name) + "</td>" +
+        "<td>" + escapeHtml(s.location || "—") + "</td>" +
+        "<td>" + (s.phone ? '<a href="tel:' + escapeAttr(s.phone) + '">' + escapeHtml(s.phone) + "</a>" : "—") + "</td>" +
+        "<td>" + (s.email ? '<a href="mailto:' + escapeAttr(s.email) + '">' + escapeHtml(s.email) + "</a>" : "—") + "</td>" +
+        "<td>" + escapeHtml(s.services || "—") + "</td>" +
+        "<td>" + (s.preferred ? '<span class="pref-pill">Preferred</span>' : "—") + "</td>" +
+        '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
+      if (isAdmin) {
+        var actionsCell = tr.querySelector(".pb-actions");
+        var editBtn = document.createElement("button");
+        editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", function () {
+          var category = prompt("Category", s.category || ""); if (category === null) return;
+          var name = prompt("Name", s.name || ""); if (name === null) return;
+          var location = prompt("Location", s.location || ""); if (location === null) return;
+          var phone = prompt("Phone", s.phone || ""); if (phone === null) return;
+          var email = prompt("Email", s.email || ""); if (email === null) return;
+          var services = prompt("Services / notes", s.services || ""); if (services === null) return;
+          var preferred = confirm("Preferred supplier? OK = Yes, Cancel = No. (Currently: " + (s.preferred ? "Yes" : "No") + ")");
+          API.put("/api/pricebook/suppliers/" + s.id, { category: category, name: name, location: location, phone: phone, email: email, services: services, preferred: preferred })
+            .then(function () { toast("Updated"); reloadPbSuppliers(); })
+            .catch(function () { toast("Could not update"); });
+        });
+        actionsCell.appendChild(editBtn);
+        var delBtn = document.createElement("button");
+        delBtn.className = "btn btn-ghost btn-sm"; delBtn.textContent = "Delete"; delBtn.style.marginLeft = "6px";
+        delBtn.addEventListener("click", function () {
+          confirmDialog('Remove supplier "' + s.name + '"?').then(function (ok) {
+            if (!ok) return;
+            API.del("/api/pricebook/suppliers/" + s.id).then(function () { toast("Removed"); reloadPbSuppliers(); }).catch(function () { toast("Could not remove"); });
+          });
+        });
+        actionsCell.appendChild(delBtn);
+      }
+      body.appendChild(tr);
+    });
+  }
+
+  function renderPbContractors(contractors) {
+    var wrap = document.getElementById("pbContractorsList");
+    wrap.innerHTML = "";
+    var isAdmin = CURRENT_USER_ROLE === "admin";
+    if (!contractors.length) {
+      wrap.innerHTML = '<p class="hint">No contractors yet.</p>';
+      return;
+    }
+    contractors.forEach(function (c) {
+      var card = document.createElement("div");
+      card.className = "contractor-card" + (c.preferred ? " preferred" : "");
+
+      var contactsHtml = "";
+      if (c.phone) contactsHtml += '<a href="tel:' + escapeAttr(c.phone) + '">' + escapeHtml(c.phone) + "</a>";
+      if (c.email) contactsHtml += '<a href="mailto:' + escapeAttr(c.email) + '">' + escapeHtml(c.email) + "</a>";
+
+      card.innerHTML =
+        '<div class="contractor-head">' +
+          '<div><span class="contractor-name">' + escapeHtml(c.name) + "</span>" + (c.preferred ? '<span class="pref-pill">Preferred</span>' : "") +
+          '<div class="contractor-loc">' + escapeHtml(c.category || "") + (c.location ? " · " + escapeHtml(c.location) : "") + "</div></div>" +
+          '<div class="contractor-actions"></div>' +
+        "</div>" +
+        (c.services ? '<div class="contractor-services">' + escapeHtml(c.services) + "</div>" : "") +
+        (contactsHtml ? '<div class="contractor-contacts">' + contactsHtml + "</div>" : "") +
+        (c.notes ? '<div class="contractor-notes">' + escapeHtml(c.notes) + "</div>" : "") +
+        '<button class="contractor-pricing-toggle" type="button">▶ ' + (c.pricing.length ? "Show Pricing (" + c.pricing.length + ")" : "Show Pricing") + "</button>" +
+        '<div class="contractor-pricing"></div>';
+
+      if (isAdmin) {
+        var actionsCell = card.querySelector(".contractor-actions");
+        var editBtn = document.createElement("button");
+        editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", function () {
+          var category = prompt("Category", c.category || ""); if (category === null) return;
+          var name = prompt("Name", c.name || ""); if (name === null) return;
+          var location = prompt("Location", c.location || ""); if (location === null) return;
+          var phone = prompt("Phone", c.phone || ""); if (phone === null) return;
+          var email = prompt("Email", c.email || ""); if (email === null) return;
+          var services = prompt("Services / notes", c.services || ""); if (services === null) return;
+          var pricingNote = prompt("Pricing note (shown above the rate card)", c.pricingNote || ""); if (pricingNote === null) return;
+          var notes = prompt("Notes (internal only - anything worth remembering)", c.notes || ""); if (notes === null) return;
+          var preferred = confirm("Preferred contractor? OK = Yes, Cancel = No. (Currently: " + (c.preferred ? "Yes" : "No") + ")");
+          API.put("/api/pricebook/contractors/" + c.id, { category: category, name: name, location: location, phone: phone, email: email, services: services, pricingNote: pricingNote, notes: notes, preferred: preferred })
+            .then(function () { toast("Updated"); reloadPbContractors(); })
+            .catch(function () { toast("Could not update"); });
+        });
+        actionsCell.appendChild(editBtn);
+        var delBtn = document.createElement("button");
+        delBtn.className = "btn btn-ghost btn-sm"; delBtn.textContent = "Delete"; delBtn.style.marginLeft = "6px";
+        delBtn.addEventListener("click", function () {
+          confirmDialog('Remove contractor "' + c.name + '"? This also removes their rate card.').then(function (ok) {
+            if (!ok) return;
+            API.del("/api/pricebook/contractors/" + c.id).then(function () { toast("Removed"); reloadPbContractors(); }).catch(function () { toast("Could not remove"); });
+          });
+        });
+        actionsCell.appendChild(delBtn);
+      }
+
+      var pricingWrap = card.querySelector(".contractor-pricing");
+      var toggleBtn = card.querySelector(".contractor-pricing-toggle");
+      var pricingHtml = "";
+      if (c.pricingNote) pricingHtml += '<div class="contractor-pricing-note">' + escapeHtml(c.pricingNote) + "</div>";
+      c.pricing.forEach(function (p) {
+        pricingHtml +=
+          '<div class="contractor-pricing-row"><div><span class="contractor-pricing-name">' + escapeHtml(p.label) + "</span>" +
+          (p.note ? ' <span class="contractor-pricing-note-inline">(' + escapeHtml(p.note) + ")</span>" : "") + "</div>" +
+          '<div style="display:flex;align-items:center;gap:10px"><span class="contractor-pricing-price">' + (p.price == null ? "TBD" : "AED " + fmt(p.price)) + "</span>" +
+          '<span class="contractor-pricing-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '" data-pid="' + p.id + '"></span></div></div>';
+      });
+      pricingWrap.innerHTML = pricingHtml;
+
+      if (isAdmin) {
+        c.pricing.forEach(function (p) {
+          var cell = pricingWrap.querySelector('[data-pid="' + p.id + '"]');
+          if (!cell) return;
+          var editBtn = document.createElement("button");
+          editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
+          editBtn.addEventListener("click", function () {
+            var label = prompt("Label", p.label); if (label === null) return;
+            var price = prompt("Price (AED)", p.price == null ? "" : p.price); if (price === null) return;
+            var note = prompt("Note", p.note || ""); if (note === null) return;
+            API.put("/api/pricebook/contractors/" + c.id + "/pricing/" + p.id, { label: label, price: price === "" ? null : +price, note: note })
+              .then(function () { toast("Updated"); reloadPbContractors(); }).catch(function () { toast("Could not update"); });
+          });
+          cell.appendChild(editBtn);
+          var delBtn = document.createElement("button");
+          delBtn.className = "btn btn-ghost btn-sm"; delBtn.textContent = "×"; delBtn.title = "Remove row"; delBtn.style.marginLeft = "4px";
+          delBtn.addEventListener("click", function () {
+            confirmDialog("Remove this pricing row?").then(function (ok) {
+              if (!ok) return;
+              API.del("/api/pricebook/contractors/" + c.id + "/pricing/" + p.id).then(function () { toast("Removed"); reloadPbContractors(); }).catch(function () { toast("Could not remove"); });
+            });
+          });
+          cell.appendChild(delBtn);
+        });
+
+        var addRow = document.createElement("div");
+        addRow.className = "contractor-pricing-add admin-only";
+        addRow.style.display = isAdmin ? "" : "none";
+        addRow.innerHTML =
+          '<input type="text" placeholder="Label (e.g. Studio Apt - Unfurnished)" style="flex:1.5">' +
+          '<input type="number" placeholder="Price (AED)" style="max-width:110px">' +
+          '<input type="text" placeholder="Note" style="max-width:140px">' +
+          '<button class="btn btn-outline btn-sm">+ Add pricing row</button>';
+        var inputs = addRow.querySelectorAll("input");
+        addRow.querySelector("button").addEventListener("click", function () {
+          var label = inputs[0].value.trim();
+          if (!label) { toast("Enter a label first"); return; }
+          API.post("/api/pricebook/contractors/" + c.id + "/pricing", {
+            label: label, price: inputs[1].value === "" ? null : +inputs[1].value, note: inputs[2].value.trim()
+          }).then(function () { toast("Pricing row added"); reloadPbContractors(); }).catch(function () { toast("Could not add"); });
+        });
+        pricingWrap.appendChild(addRow);
+      }
+
+      toggleBtn.addEventListener("click", function () {
+        var open = pricingWrap.classList.toggle("open");
+        toggleBtn.textContent = (open ? "▼ Hide Pricing" : "▶ Show Pricing") + (c.pricing.length ? " (" + c.pricing.length + ")" : "");
+      });
+
+      wrap.appendChild(card);
+    });
+  }
+
   function wirePricebookV2() {
     document.getElementById("pbMaterialsSearch").addEventListener("input", debounce(reloadPbMaterials, 250));
     document.getElementById("pbLabourSearch").addEventListener("input", debounce(reloadPbLabour, 250));
     document.getElementById("pbFixedSearch").addEventListener("input", debounce(reloadPbFixed, 250));
+    document.getElementById("pbSuppliersSearch").addEventListener("input", debounce(reloadPbSuppliers, 250));
+    document.getElementById("pbContractorsSearch").addEventListener("input", debounce(reloadPbContractors, 250));
+
+    document.getElementById("btnExportPricebook").addEventListener("click", function () {
+      window.location.href = "/api/pricebook/export?team=" + encodeURIComponent(ACTIVE_TEAM);
+    });
+
+    document.getElementById("btnResetTeamPricebook").addEventListener("click", function () {
+      var teamLabel = TEAM_LABELS[ACTIVE_TEAM];
+      confirmDialog(
+        "Reset " + teamLabel + "'s Materials, Labour, Fixed Services and Suppliers to the original defaults? " +
+        "Any items your team has added or edited for " + teamLabel + " will be permanently deleted. Contractors are not affected."
+      ).then(function (ok) {
+        if (!ok) return;
+        API.post("/api/pricebook/reset", { team: ACTIVE_TEAM }).then(function () {
+          toast(teamLabel + "'s Price Book reset to defaults");
+          loadPricebookV2();
+        }).catch(function (e) { toast(e.message || "Could not reset"); });
+      });
+    });
 
     document.getElementById("pbAddMaterialBtn").addEventListener("click", function () {
       var bar = document.getElementById("pbMaterialsAddBar");
       var item = bar.querySelector(".pb-new-item").value.trim();
       if (!item) { toast("Enter an item name"); return; }
       API.post("/api/pricebook/materials", {
+        team: ACTIVE_TEAM,
         category: bar.querySelector(".pb-new-cat").value.trim(),
         itemName: item,
         brand: bar.querySelector(".pb-new-brand").value.trim(),
@@ -1289,6 +1607,7 @@
       var role = bar.querySelector(".pb-new-role").value.trim();
       if (!role) { toast("Enter a role name"); return; }
       API.post("/api/pricebook/labour", {
+        team: ACTIVE_TEAM,
         roleName: role,
         labourType: bar.querySelector(".pb-new-labour-type").value,
         cost: bar.querySelector(".pb-new-cost").value === "" ? null : +bar.querySelector(".pb-new-cost").value,
@@ -1307,6 +1626,7 @@
       var name = bar.querySelector(".pb-new-service").value.trim();
       if (!name) { toast("Enter a service name"); return; }
       API.post("/api/pricebook/fixed-services", {
+        team: ACTIVE_TEAM,
         category: bar.querySelector(".pb-new-cat").value.trim(),
         serviceName: name,
         estimatedCost: bar.querySelector(".pb-new-est-cost").value === "" ? null : +bar.querySelector(".pb-new-est-cost").value,
@@ -1316,6 +1636,48 @@
         toast("Fixed service added");
         reloadPbFixed();
       }).catch(function () { toast("Could not add fixed service"); });
+    });
+
+    document.getElementById("pbAddSupplierBtn").addEventListener("click", function () {
+      var bar = document.getElementById("pbSuppliersAddBar");
+      var name = bar.querySelector(".pb-new-name").value.trim();
+      if (!name) { toast("Enter a supplier name"); return; }
+      API.post("/api/pricebook/suppliers", {
+        team: ACTIVE_TEAM,
+        category: bar.querySelector(".pb-new-cat").value.trim(),
+        name: name,
+        location: bar.querySelector(".pb-new-location").value.trim(),
+        phone: bar.querySelector(".pb-new-phone").value.trim(),
+        email: bar.querySelector(".pb-new-email").value.trim(),
+        services: bar.querySelector(".pb-new-services").value.trim(),
+        preferred: bar.querySelector(".pb-new-preferred").checked
+      }).then(function () {
+        bar.querySelectorAll("input[type=text]").forEach(function (i) { i.value = ""; });
+        bar.querySelector(".pb-new-preferred").checked = false;
+        toast("Supplier added");
+        reloadPbSuppliers();
+      }).catch(function () { toast("Could not add supplier"); });
+    });
+
+    document.getElementById("pbAddContractorBtn").addEventListener("click", function () {
+      var card = document.getElementById("pbContractorsAddCard");
+      var name = card.querySelector(".pb-new-name").value.trim();
+      if (!name) { toast("Enter a contractor name"); return; }
+      API.post("/api/pricebook/contractors", {
+        category: card.querySelector(".pb-new-cat").value.trim(),
+        name: name,
+        location: card.querySelector(".pb-new-location").value.trim(),
+        phone: card.querySelector(".pb-new-phone").value.trim(),
+        email: card.querySelector(".pb-new-email").value.trim(),
+        services: card.querySelector(".pb-new-services").value.trim(),
+        notes: card.querySelector(".pb-new-notes").value.trim(),
+        preferred: card.querySelector(".pb-new-preferred").checked
+      }).then(function () {
+        card.querySelectorAll("input[type=text]").forEach(function (i) { i.value = ""; });
+        card.querySelector(".pb-new-preferred").checked = false;
+        toast("Contractor added — open it to add rate-card rows");
+        reloadPbContractors();
+      }).catch(function () { toast("Could not add contractor"); });
     });
   }
 
@@ -1880,10 +2242,850 @@
     });
   }
 
+  // ==================================================================
+  // AMC TRACKER
+  // ==================================================================
+  var AMC_META = null;
+  var AMC_CLIENTS = [];
+  var AMC_HISTORY = [];
+  var AMC_HANDLED = {};
+  var amcExpandedRowId = null;
+  var AMC_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  function loadAmcMeta() {
+    API.get("/api/amc/meta").then(function (d) { AMC_META = d; }).catch(function () {});
+  }
+
+  function initAmcTracker() {
+    document.querySelectorAll("#amcSubnav .amc-subtab").forEach(function (btn) {
+      btn.addEventListener("click", function () { amcSwitchSubtab(btn.dataset.amc); });
+    });
+    document.getElementById("amcBtnGoAdd").addEventListener("click", function () { amcSwitchSubtab("add"); });
+
+    document.getElementById("amcTrkSearch").addEventListener("input", amcRenderTracker);
+    document.getElementById("amcTrkPkg").addEventListener("change", amcRenderTracker);
+    document.getElementById("amcTrkStatus").addEventListener("change", amcRenderTracker);
+    document.getElementById("amcHistSearch").addEventListener("input", amcRenderHistory);
+    document.getElementById("amcHideHandled").addEventListener("change", amcRenderActions);
+
+    document.getElementById("amcFPackage").addEventListener("input", amcUpdateSchedulePreview);
+    document.getElementById("amcFStart").addEventListener("input", amcUpdateSchedulePreview);
+    document.getElementById("amcFStart").addEventListener("change", function () {
+      var endField = document.getElementById("amcFEnd");
+      if (endField.value) return;
+      var start = document.getElementById("amcFStart").value;
+      if (!start) return;
+      endField.value = amcOneYearMinusDay(start);
+    });
+    document.getElementById("amcLnkOneYear").addEventListener("click", function (e) {
+      e.preventDefault();
+      var start = document.getElementById("amcFStart").value;
+      if (!start) { toast("Set a start date first"); return; }
+      document.getElementById("amcFEnd").value = amcOneYearMinusDay(start);
+    });
+    document.getElementById("amcBtnFormClear").addEventListener("click", function () {
+      document.getElementById("amcAddForm").reset();
+      amcUpdateSchedulePreview();
+      amcShowFormErrors([]);
+    });
+    document.getElementById("amcAddForm").addEventListener("submit", amcSubmitAddForm);
+  }
+
+  function amcSwitchSubtab(name) {
+    document.querySelectorAll("#amcSubnav .amc-subtab").forEach(function (b) { b.classList.toggle("active", b.dataset.amc === name); });
+    document.querySelectorAll(".amc-panel").forEach(function (p) { p.classList.toggle("active", p.id === "amc-" + name); });
+  }
+
+  function loadAmcAll() {
+    Promise.all([
+      API.get("/api/amc/clients?team=" + encodeURIComponent(ACTIVE_TEAM)),
+      API.get("/api/amc/history?team=" + encodeURIComponent(ACTIVE_TEAM)),
+      API.get("/api/amc/actions-handled?team=" + encodeURIComponent(ACTIVE_TEAM))
+    ]).then(function (res) {
+      AMC_CLIENTS = res[0].clients;
+      AMC_HISTORY = res[1].history;
+      AMC_HANDLED = {};
+      (res[2].handled || []).forEach(function (k) { AMC_HANDLED[k] = true; });
+      amcExpandedRowId = null;
+      amcRenderDashboard();
+      amcRenderTracker();
+      amcRenderActions();
+      amcRenderHistory();
+    }).catch(function () { toast("Could not load AMC data"); });
+  }
+
+  function amcFmtDate(iso) {
+    if (!iso) return "—";
+    var parts = iso.split("-");
+    if (parts.length !== 3) return "—";
+    var y = +parts[0], m = +parts[1], d = +parts[2];
+    if (!y || !m || !d) return "—";
+    return String(d).padStart(2, "0") + "-" + AMC_MONTHS[m - 1] + "-" + y;
+  }
+  function amcIso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function amcOneYearMinusDay(startISO) {
+    var parts = startISO.split("-").map(Number);
+    var d = new Date(parts[0], parts[1] - 1, parts[2]);
+    d.setFullYear(d.getFullYear() + 1);
+    d.setDate(d.getDate() - 1);
+    return amcIso(d);
+  }
+  function amcVisitDueDatePreview(startISO, off) {
+    var parts = startISO.split("-").map(Number);
+    var d = new Date(parts[0], parts[1] - 1, parts[2]);
+    if (off.d) { d.setDate(d.getDate() + off.d); return amcIso(d); }
+    var day = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + off.m);
+    var lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(day, lastDay));
+    return amcIso(d);
+  }
+
+  function amcVisitPillClass(status) {
+    return { "Done": "target", "OVERDUE": "critical", "Due Soon": "warn", "Scheduled": "above" }[status] || "muted";
+  }
+  function amcManualStatusPillClass(status) {
+    return { "Done": "target", "Overdue": "critical", "Scheduled": "above", "Pending": "warn" }[status] || "muted";
+  }
+  function amcTrackPillClass(track) {
+    return { behind: "critical", ontrack: "target", complete: "above" }[track] || "muted";
+  }
+  function amcPayPillClass(flag) {
+    return { paid: "target", partial: "warn", unpaid: "critical" }[flag] || "muted";
+  }
+  function amcAlertPillClass(alert) {
+    return (alert === "Expired" || alert === "Send now") ? "critical" : "warn";
+  }
+  function amcBadge(label, cls) {
+    return '<span class="band-badge ' + cls + '" style="margin-left:0">' + escapeHtml(label) + "</span>";
+  }
+
+  // ---------------------------------------------------------------- DASHBOARD
+  function amcRenderDashboard() {
+    var clients = AMC_CLIENTS;
+    var active = clients.length;
+    var renew14 = 0, renew30 = 0, paymentsOut = 0, visitsOverdue = 0, premium = 0;
+    var behind = [];
+    clients.forEach(function (c) {
+      if (c.daysLeft !== null) {
+        if (c.daysLeft >= 0 && c.daysLeft <= 14) renew14++;
+        if (c.daysLeft >= 0 && c.daysLeft <= 30) renew30++;
+      }
+      if (c.payStatus === "Unpaid" || c.payStatus === "50% Paid") paymentsOut++;
+      visitsOverdue += c.visits.filter(function (v) { return v.status === "OVERDUE"; }).length;
+      if (c.trackStatus === "behind") behind.push(c);
+      if (c.package === "Premium") premium++;
+    });
+
+    var kpis = [
+      { label: "Active Contracts", num: active, cls: "" },
+      { label: "Renewals ≤ 14 Days", num: renew14, cls: "stat-card-red" },
+      { label: "Renewals ≤ 30 Days", num: renew30, cls: "stat-card-amber" },
+      { label: "Payments Outstanding", num: paymentsOut, cls: "stat-card-amber" },
+      { label: "Visits Overdue", num: visitsOverdue, cls: "stat-card-red" },
+      { label: "Behind Schedule", num: behind.length, cls: "stat-card-red" },
+      { label: "Premium Clients", num: premium, cls: "stat-card-blue" }
+    ];
+    document.getElementById("amcKpiRow").innerHTML = kpis.map(function (k) {
+      return '<div class="card stat-card ' + k.cls + '"><div class="stat-lbl">' + escapeHtml(k.label) + '</div><div class="stat-val">' + k.num + "</div></div>";
+    }).join("");
+
+    var behindListEl = document.getElementById("amcBehindList");
+    if (behind.length === 0) {
+      behindListEl.innerHTML = '<li class="hint" style="padding:8px 0">Nothing behind schedule right now. Nicely done.</li>';
+    } else {
+      behindListEl.innerHTML = behind.map(function (c) {
+        var overdueVisits = c.visits.filter(function (v) { return v.status === "OVERDUE"; }).length;
+        return '<li class="amc-flag-item" data-goto="' + c.id + '"><span><span class="amc-fi-name">' + escapeHtml(c.customer) +
+          '</span><br><span class="amc-fi-meta">' + escapeHtml(c.location || "") + " · " + escapeHtml(c.package) + "</span></span>" +
+          '<span class="amc-fi-meta">' + overdueVisits + " visit" + (overdueVisits === 1 ? "" : "s") + " overdue</span></li>";
+      }).join("");
+      behindListEl.querySelectorAll(".amc-flag-item").forEach(function (li) {
+        li.addEventListener("click", function () {
+          amcSwitchSubtab("tracker");
+          setTimeout(function () { amcOpenClientRow(li.dataset.goto); }, 60);
+        });
+      });
+    }
+
+    var counts = { Basic: 0, Standard: 0, Premium: 0 };
+    clients.forEach(function (c) { if (counts[c.package] !== undefined) counts[c.package]++; });
+    var colors = { Basic: "#6B7A93", Standard: "#02265E", Premium: "#FA6006" };
+    var max = Math.max(1, counts.Basic, counts.Standard, counts.Premium);
+    document.getElementById("amcSplitChart").innerHTML = Object.keys(counts).map(function (pkg) {
+      return '<div class="amc-split-row"><span class="amc-split-label">' + pkg + "</span>" +
+        '<span class="amc-split-track"><span class="amc-split-fill" style="width:' + (counts[pkg] / max * 100).toFixed(0) + "%;background:" + colors[pkg] + '"></span></span>' +
+        '<span class="amc-split-count">' + counts[pkg] + " clients</span></div>";
+    }).join("");
+
+    document.getElementById("amcCntTracker").textContent = active;
+    document.getElementById("amcCntActions").textContent = behind.length + paymentsOut + visitsOverdue;
+  }
+
+  // ---------------------------------------------------------------- TRACKER
+  function amcPassesFilters(c) {
+    var q = document.getElementById("amcTrkSearch").value.trim().toLowerCase();
+    var pkg = document.getElementById("amcTrkPkg").value;
+    var st = document.getElementById("amcTrkStatus").value;
+    if (q && (c.customer || "").toLowerCase().indexOf(q) === -1 && (c.location || "").toLowerCase().indexOf(q) === -1) return false;
+    if (pkg && c.package !== pkg) return false;
+    if (st && c.trackStatus !== st) return false;
+    return true;
+  }
+
+  function amcRenderTracker() {
+    var tbody = document.getElementById("amcTrackerBody");
+    var rows = AMC_CLIENTS.filter(amcPassesFilters);
+    document.getElementById("amcTrkCount").textContent = rows.length + " of " + AMC_CLIENTS.length + " clients";
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="14" style="padding:24px;text-align:center;color:var(--muted)">No clients match these filters.</td></tr>';
+      return;
+    }
+
+    var html = "";
+    rows.forEach(function (c) {
+      var trackLabel = { behind: "⚠ Behind schedule", ontrack: "✓ On track", complete: "✓ All complete" }[c.trackStatus];
+      var isOpen = amcExpandedRowId === c.id;
+      var visitCells = c.visits.map(function (v) {
+        var label = v.status === "N/A" ? "—" : v.status;
+        return "<td>" + amcBadge(label, amcVisitPillClass(v.status)) + "</td>";
+      }).join("");
+      html += '<tr class="amc-row-main' + (c.flag ? " amc-row-flagged" : "") + '" data-id="' + c.id + '">' +
+        '<td><span class="amc-chevron">' + (isOpen ? "▾" : "▸") + "</span></td>" +
+        '<td class="amc-cust-cell">' + escapeHtml(c.customer) + '<span class="amc-cust-sub">' + escapeHtml(c.location || "") + (c.flag ? " · ⚠ needs review" : "") + "</span></td>" +
+        "<td>" + escapeHtml(c.package) + "</td>" +
+        "<td>" + amcFmtDate(c.start) + "</td>" +
+        "<td>" + amcFmtDate(c.end) + "</td>" +
+        '<td class="num">' + (c.daysLeft === null ? "—" : c.daysLeft) + "</td>" +
+        "<td>" + (c.renewalAlert ? amcBadge(c.renewalAlert, amcAlertPillClass(c.renewalAlert)) : "") + "</td>" +
+        "<td>" + amcBadge(c.payStatus, amcPayPillClass(c.payFlag)) + "</td>" +
+        visitCells +
+        "<td>" + amcBadge(trackLabel, amcTrackPillClass(c.trackStatus)) + "</td>" +
+        "<td>" + amcBadge(c.wtcStatus || "N/A", amcManualStatusPillClass(c.wtcStatus)) + "</td>" +
+        "</tr>";
+      if (isOpen) html += amcRenderDetailRow(c);
+    });
+    tbody.innerHTML = html;
+
+    tbody.querySelectorAll("tr.amc-row-main").forEach(function (tr) {
+      tr.addEventListener("click", function () { amcOpenClientRow(tr.dataset.id); });
+    });
+    amcWireDetailInputs();
+  }
+
+  function amcOpenClientRow(id) {
+    amcExpandedRowId = (amcExpandedRowId === id) ? null : id;
+    amcRenderTracker();
+    if (amcExpandedRowId === id) {
+      var el = document.querySelector('tr.amc-row-main[data-id="' + id + '"]');
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
+  function amcOptionList(options, current) {
+    return options.map(function (o) { return "<option " + (current === o ? "selected" : "") + ">" + o + "</option>"; }).join("");
+  }
+
+  function amcRenderDetailRow(c) {
+    var hmAllowed = c.handymanVisitsAllowed || 0;
+    var pastYears = AMC_HISTORY.filter(function (h) {
+      return h.customer === c.customer && h.location === c.location && !(h.start === c.start && h.end === c.end);
+    }).sort(function (a, b) { return (b.start || "").localeCompare(a.start || ""); });
+
+    var historyStatusCls = { Active: "target", Expired: "muted", Cancelled: "critical" };
+    var historyHtml = pastYears.length === 0
+      ? '<p class="hint" style="padding:0">No earlier contract years on record for this client.</p>'
+      : pastYears.map(function (h) {
+          return '<div class="amc-history-line"><span class="hl-year">' + escapeHtml(h.year) + "</span>" +
+            "<span>" + escapeHtml(h.package) + "</span>" +
+            amcBadge(h.status, historyStatusCls[h.status] || "muted") +
+            "<span>" + (h.start ? amcFmtDate(h.start) : "—") + " → " + (h.end ? amcFmtDate(h.end) : "—") + "</span>" +
+            (h.notes ? '<span class="hl-notes">' + escapeHtml(h.notes) + "</span>" : "") + "</div>";
+        }).join("");
+
+    var visitRowsHtml = c.visits.map(function (v) {
+      if (v.status === "N/A") {
+        return '<div class="amc-visit-row"><span class="v-n">V' + v.n + '</span><span class="v-due">Not applicable</span><span></span><span></span></div>';
+      }
+      return '<div class="amc-visit-row"><span class="v-n">V' + v.n + '</span><span class="v-due">' + amcFmtDate(v.due) + '</span>' +
+        '<input type="date" data-field="v' + v.n + 'Done" value="' + (v.done || "") + '">' +
+        amcBadge(v.status, amcVisitPillClass(v.status)) + "</div>";
+    }).join("");
+
+    var visitStatusList = ["Pending", "Scheduled", "Done", "Overdue", "N/A"];
+    var teamOpts = ["dubai", "magcity"].map(function (t) {
+      return '<option value="' + t + '" ' + (c.team === t ? "selected" : "") + ">" + TEAM_LABELS[t] + "</option>";
+    }).join("");
+
+    return '<tr class="amc-row-detail" data-detail-for="' + c.id + '"><td colspan="14">' +
+      '<div class="amc-detail-grid">' +
+        '<div class="amc-detail-block"><h4>Contract</h4>' +
+          '<div class="amc-field-row"><label>Location</label><input type="text" data-field="location" value="' + escapeAttr(c.location || "") + '"></div>' +
+          '<div class="amc-field-row"><label>Address</label><input type="text" data-field="address" value="' + escapeAttr(c.address || "") + '"></div>' +
+          '<div class="amc-field-inline">' +
+            '<div><label>Owner / Tenant</label><select data-field="ownerTenant">' + amcOptionList(["Owner", "Tenant", "Commercial"], c.ownerTenant) + "</select></div>" +
+            '<div><label>Package</label><select data-field="package">' + amcOptionList(["Basic", "Standard", "Premium"], c.package) + "</select></div>" +
+          "</div>" +
+          '<div class="amc-field-inline">' +
+            '<div><label>Start date</label><input type="date" data-field="start" value="' + c.start + '"></div>' +
+            '<div><label>End date</label><input type="date" data-field="end" value="' + c.end + '"></div>' +
+          "</div>" +
+          '<div class="amc-field-row"><label>Team / Location</label><select data-field="team">' + teamOpts + "</select></div>" +
+        "</div>" +
+
+        '<div class="amc-detail-block"><h4>Payment</h4>' +
+          '<div class="amc-field-inline">' +
+            '<div><label>Type</label><select data-field="payType">' + amcOptionList(["Upfront", "50/50", "Monthly", "FOC"], c.payType) + "</select></div>" +
+            '<div><label>Status</label><select data-field="payStatus">' + amcOptionList(["Paid", "50% Paid", "Unpaid", "FOC"], c.payStatus) + "</select></div>" +
+          "</div>" +
+          '<div class="amc-field-row"><label>Payment notes</label><input type="text" data-field="payNotes" value="' + escapeAttr(c.payNotes || "") + '"></div>' +
+        "</div>" +
+
+        '<div class="amc-detail-block"><h4>AC PPM Visits (' + escapeHtml(c.package) + ")</h4>" + visitRowsHtml + "</div>" +
+
+        '<div class="amc-detail-block"><h4>WTC &amp; Handyman</h4>' +
+          '<div class="amc-field-inline">' +
+            '<div><label>WTC status</label><select data-field="wtcStatus">' + amcOptionList(visitStatusList, c.wtcStatus) + "</select></div>" +
+            '<div><label>WTC date</label><input type="date" data-field="wtcDate" value="' + (c.wtcDate || "") + '"></div>' +
+          "</div>" +
+          '<div class="amc-field-inline">' +
+            '<div><label>Handyman V1</label><select data-field="hm1Status">' + amcOptionList(visitStatusList, c.hm1Status) + "</select></div>" +
+            '<div><label>Date</label><input type="date" data-field="hm1Date" value="' + (c.hm1Date || "") + '"></div>' +
+          "</div>" +
+          (hmAllowed >= 2 ?
+            '<div class="amc-field-inline">' +
+              '<div><label>Handyman V2</label><select data-field="hm2Status">' + amcOptionList(visitStatusList, c.hm2Status) + "</select></div>" +
+              '<div><label>Date</label><input type="date" data-field="hm2Date" value="' + (c.hm2Date || "") + '"></div>' +
+            "</div>" : "") +
+        "</div>" +
+
+        '<div class="amc-detail-block" style="grid-column:1/-1"><h4>Notes</h4><textarea data-field="notes" style="min-height:60px">' + escapeHtml(c.notes || "") + "</textarea></div>" +
+
+        '<div class="amc-detail-block" style="grid-column:1/-1"><h4>Contract History — ' + escapeHtml(c.customer) + (c.location ? " (" + escapeHtml(c.location) + ")" : "") + "</h4><div>" + historyHtml + "</div></div>" +
+
+        (c.flag ? '<div class="amc-detail-notice">⚠ ' + escapeHtml(c.flag) + "</div>" : "") +
+      "</div>" +
+      '<div class="amc-save-hint">Changes save automatically as you edit.</div>' +
+    "</td></tr>";
+  }
+
+  function amcWireDetailInputs() {
+    document.querySelectorAll("tr.amc-row-detail [data-field]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var tr = input.closest("tr.amc-row-detail");
+        var id = tr.dataset.detailFor;
+        var field = input.dataset.field;
+        var body = {}; body[field] = input.value;
+        API.put("/api/amc/clients/" + id, body).then(function (updated) {
+          var idx = AMC_CLIENTS.findIndex(function (c) { return c.id === id; });
+          toast("Saved");
+          if (field === "team" && updated.team !== ACTIVE_TEAM) {
+            if (idx !== -1) AMC_CLIENTS.splice(idx, 1);
+            amcExpandedRowId = null;
+          } else if (idx !== -1) {
+            AMC_CLIENTS[idx] = updated;
+          }
+          amcRenderTracker();
+          amcRenderDashboard();
+        }).catch(function () { toast("Could not save"); });
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------- ACTIONS
+  function amcRenderActions() {
+    var hideHandled = document.getElementById("amcHideHandled").checked;
+    var clients = AMC_CLIENTS;
+
+    var renewals = clients.filter(function (c) { return c.daysLeft !== null && c.daysLeft <= 30; })
+      .sort(function (a, b) { return a.daysLeft - b.daysLeft; });
+    document.getElementById("amcCntRenewals").textContent = renewals.length;
+    amcRenderActionList("amcListRenewals", renewals.map(function (c) {
+      var label = c.daysLeft < 0 ? ("Expired " + Math.abs(c.daysLeft) + " days ago") : (c.daysLeft === 0 ? "Expires today" : (c.daysLeft + " days left"));
+      return { key: "renew-" + c.id, title: c.customer + " — contract renewal", meta: (c.location || "") + " · " + c.package + " · ends " + amcFmtDate(c.end), due: label, urgent: c.daysLeft <= 14 };
+    }), hideHandled);
+
+    var payments = clients.filter(function (c) { return c.payStatus === "Unpaid" || c.payStatus === "50% Paid"; });
+    document.getElementById("amcCntPayments").textContent = payments.length;
+    amcRenderActionList("amcListPayments", payments.map(function (c) {
+      return { key: "pay-" + c.id, title: c.customer + " — " + c.payStatus, meta: c.payNotes || ((c.location || "") + " · " + c.package), due: c.payStatus === "Unpaid" ? "Chase now" : "Balance due", urgent: c.payStatus === "Unpaid" };
+    }), hideHandled);
+
+    var overdueVisits = [];
+    clients.forEach(function (c) {
+      c.visits.filter(function (v) { return v.status === "OVERDUE"; }).forEach(function (v) { overdueVisits.push({ c: c, v: v }); });
+    });
+    overdueVisits.sort(function (a, b) { return (a.v.due || "").localeCompare(b.v.due || ""); });
+    document.getElementById("amcCntVisits").textContent = overdueVisits.length;
+    amcRenderActionList("amcListVisits", overdueVisits.map(function (o) {
+      var todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+      var dueParts = o.v.due.split("-").map(Number);
+      var dueDate = new Date(dueParts[0], dueParts[1] - 1, dueParts[2]);
+      var daysOver = Math.round((todayMidnight.getTime() - dueDate.getTime()) / 86400000);
+      return { key: "visit-" + o.c.id + "-" + o.v.n, title: o.c.customer + " — AC PPM visit " + o.v.n, meta: (o.c.location || "") + " · " + o.c.package + " · was due " + amcFmtDate(o.v.due), due: daysOver + " days overdue", urgent: true };
+    }), hideHandled);
+  }
+
+  function amcRenderActionList(elId, items, hideHandled) {
+    var el = document.getElementById(elId);
+    var visible = items.filter(function (it) { return !(hideHandled && AMC_HANDLED[it.key]); });
+    if (!visible.length) { el.innerHTML = '<p class="hint">Nothing here right now.</p>'; return; }
+    el.innerHTML = visible.map(function (it) {
+      var handled = !!AMC_HANDLED[it.key];
+      return '<div class="amc-action-item' + (handled ? " handled" : "") + '">' +
+        '<input type="checkbox" data-key="' + escapeAttr(it.key) + '" ' + (handled ? "checked" : "") + ">" +
+        '<div class="amc-ai-body"><div class="amc-ai-title">' + escapeHtml(it.title) + '</div><div class="amc-ai-meta">' + escapeHtml(it.meta) + "</div></div>" +
+        '<div class="amc-ai-due" style="color:' + (it.urgent ? "var(--red)" : "#C25E00") + '">' + escapeHtml(it.due) + "</div>" +
+      "</div>";
+    }).join("");
+    el.querySelectorAll("input[type=checkbox]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        var key = cb.dataset.key;
+        AMC_HANDLED[key] = cb.checked;
+        API.post("/api/amc/actions-handled", { team: ACTIVE_TEAM, actionKey: key, handled: cb.checked }).catch(function () {});
+        amcRenderActions();
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------- ADD CLIENT
+  function amcUpdateSchedulePreview() {
+    var pkg = document.getElementById("amcFPackage").value;
+    var start = document.getElementById("amcFStart").value;
+    var el = document.getElementById("amcSchedulePreview");
+    if (!pkg) { el.innerHTML = "Select a package and start date to preview the AC PPM visit schedule."; return; }
+    if (!AMC_META) { el.innerHTML = "Loading schedule…"; return; }
+    var sched = AMC_META.packageSchedule[pkg] || [];
+    if (!start) {
+      el.innerHTML = "<b>" + pkg + ":</b> " + sched.length + " visits/yr.";
+      return;
+    }
+    var dates = sched.map(function (s) { return "V" + s.n + ": " + amcFmtDate(amcVisitDueDatePreview(start, s.off)); }).join(" &nbsp;·&nbsp; ");
+    el.innerHTML = "<b>" + pkg + " — " + sched.length + " visits/yr.</b> " + dates;
+  }
+
+  function amcValidateAddForm() {
+    var problems = [];
+    [["amcFCustomer", "Customer name"], ["amcFLocation", "Location / area"], ["amcFPackage", "Package"], ["amcFStart", "Contract start"], ["amcFEnd", "Contract end"]].forEach(function (pair) {
+      var el = document.getElementById(pair[0]);
+      if (!el.value || !el.value.trim()) problems.push({ id: pair[0], label: pair[1] });
+    });
+    var start = document.getElementById("amcFStart").value, end = document.getElementById("amcFEnd").value;
+    if (start && end && end < start) problems.push({ id: "amcFEnd", label: "Contract end must be on or after the start date" });
+    return problems;
+  }
+
+  function amcShowFormErrors(problems) {
+    var box = document.getElementById("amcFormErrors");
+    document.querySelectorAll("#amcAddForm .amc-field-error").forEach(function (f) { f.classList.remove("amc-field-error"); });
+    if (!problems.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+    problems.forEach(function (p) {
+      var el = document.getElementById(p.id);
+      if (el && el.parentElement) el.parentElement.classList.add("amc-field-error");
+    });
+    box.innerHTML = "⚠ Please fix before saving: " + problems.map(function (p) { return escapeHtml(p.label); }).join(", ") + ".";
+    box.style.display = "";
+    document.getElementById(problems[0].id).focus();
+  }
+
+  function amcSubmitAddForm(e) {
+    e.preventDefault();
+    var problems = amcValidateAddForm();
+    if (problems.length) { amcShowFormErrors(problems); toast("Missing or invalid fields"); return; }
+    amcShowFormErrors([]);
+    var payload = {
+      team: ACTIVE_TEAM,
+      customer: document.getElementById("amcFCustomer").value.trim(),
+      location: document.getElementById("amcFLocation").value.trim(),
+      address: document.getElementById("amcFAddress").value.trim(),
+      package: document.getElementById("amcFPackage").value,
+      ownerTenant: document.getElementById("amcFOwnerTenant").value,
+      start: document.getElementById("amcFStart").value,
+      end: document.getElementById("amcFEnd").value,
+      payType: document.getElementById("amcFPayType").value,
+      payStatus: document.getElementById("amcFPayStatus").value,
+      payNotes: document.getElementById("amcFPayNotes").value.trim()
+    };
+    API.post("/api/amc/clients", payload).then(function (created) {
+      AMC_CLIENTS.push(created);
+      document.getElementById("amcAddForm").reset();
+      amcUpdateSchedulePreview();
+      toast(created.customer + " added");
+      amcRenderDashboard();
+      amcSwitchSubtab("tracker");
+      document.getElementById("amcTrkSearch").value = created.customer;
+      amcRenderTracker();
+    }).catch(function (err) { toast(err.message || "Could not add client"); });
+  }
+
+  // ---------------------------------------------------------------- HISTORY
+  function amcRenderHistory() {
+    var q = document.getElementById("amcHistSearch").value.trim().toLowerCase();
+    var rows = AMC_HISTORY.filter(function (h) { return !q || (h.customer || "").toLowerCase().indexOf(q) !== -1; });
+    document.getElementById("amcHistCount").textContent = rows.length + " of " + AMC_HISTORY.length + " records";
+    var statusCls = { Active: "target", Expired: "muted", Cancelled: "critical" };
+    document.getElementById("amcHistoryBody").innerHTML = rows.map(function (h) {
+      return "<tr><td>" + escapeHtml(h.customer) + "</td><td>" + escapeHtml(h.location || "") + "</td><td>" + escapeHtml(h.year) + "</td><td>" + escapeHtml(h.package) + "</td>" +
+        "<td>" + (h.start ? amcFmtDate(h.start) : "—") + "</td><td>" + (h.end ? amcFmtDate(h.end) : "—") + "</td>" +
+        "<td>" + amcBadge(h.status, statusCls[h.status] || "muted") + "</td>" +
+        "<td>" + escapeHtml(h.payment || "") + "</td><td>" + escapeHtml(h.notes || "") + "</td></tr>";
+    }).join("");
+  }
+
+  // ==================================================================
+  // AMC PROPOSALS - Proposal Builder, Contract Builder, Sent Log.
+  // Pricing/inclusions logic is mirrored here ONLY for the live preview
+  // before a proposal exists - the server (amc_proposal.py) is always the
+  // authority and recomputes everything independently when a PDF is
+  // actually generated, so a stale/tampered preview can never affect what
+  // gets saved or printed.
+  // ==================================================================
+  var AP_META = null;
+  var AP_COMM_RATES = null;
+  var AP_PROPOSALS = [];
+  var AP_CONTRACTS = [];
+  var acPendingProposalId = null;
+
+  function loadAmcProposalsMeta() {
+    API.get("/api/amc-proposals/meta").then(function (m) {
+      AP_META = m;
+      apFillUnits("apPropType", "apAcUnits", false);
+      apFillUnits("acPropType", "acAcUnits", false);
+      apLoadCommRates();
+      acUpdateValueHint();
+    }).catch(function () {});
+  }
+
+  function apFillUnits(typeSelId, unitsSelId, keepValue) {
+    var type = document.getElementById(typeSelId).value;
+    var sel = document.getElementById(unitsSelId);
+    var range = AP_META.unitRange[type];
+    var prev = keepValue ? parseInt(sel.value, 10) : null;
+    var opts = [];
+    for (var k = range[0]; k <= range[1]; k++) opts.push(k);
+    sel.innerHTML = opts.map(function (k) { return '<option value="' + k + '">' + k + "</option>"; }).join("");
+    var dflt = AP_META.defaultUnits[type];
+    sel.value = (prev && opts.indexOf(prev) !== -1) ? prev : dflt;
+  }
+
+  function apLoadCommRates() {
+    API.get("/api/amc-proposals/commercial-rates?team=" + encodeURIComponent(ACTIVE_TEAM)).then(function (r) {
+      AP_COMM_RATES = r.rates;
+      document.getElementById("apRBasicBase").value = AP_COMM_RATES.basic.base;
+      document.getElementById("apRBasicPer").value = AP_COMM_RATES.basic.per;
+      document.getElementById("apRStandardBase").value = AP_COMM_RATES.standard.base;
+      document.getElementById("apRStandardPer").value = AP_COMM_RATES.standard.per;
+      document.getElementById("apRPremiumBase").value = AP_COMM_RATES.premium.base;
+      document.getElementById("apRPremiumPer").value = AP_COMM_RATES.premium.per;
+      apUpdateCommCardVisibility();
+      apRenderPreview();
+      acUpdateValueHint();
+    }).catch(function () {});
+  }
+
+  function apUpdateCommCardVisibility() {
+    var card = document.getElementById("apCommRatesCard");
+    var isCommercial = document.getElementById("apPropType").value === "commercial";
+    card.style.display = (isCommercial && CURRENT_USER_ROLE === "admin") ? "" : "none";
+  }
+
+  function apPriceFor(type, units, override) {
+    var row;
+    if (type === "commercial") {
+      var r = AP_COMM_RATES || AP_META.commercialDefaults;
+      row = ["basic", "standard", "premium"].map(function (t) { return Math.round(r[t].base + r[t].per * units); });
+    } else {
+      var table = type === "apartment" ? AP_META.apartmentPrices : AP_META.villaPrices;
+      row = (table[String(units)] || [0, 0, 0]).slice();
+    }
+    if (override) {
+      row = row.map(function (v, i) { return (override[i] != null) ? override[i] : v; });
+    }
+    return row;
+  }
+
+  function apMonthlyPlan(annual) {
+    var planTotal = annual * AP_META.markup;
+    var deposit = planTotal * AP_META.deposit;
+    var monthly = (planTotal - deposit) / AP_META.instalments;
+    return { planTotal: planTotal, deposit: deposit, monthly: monthly };
+  }
+
+  function apReadOverride() {
+    var raw = [document.getElementById("apOverrideBasic").value, document.getElementById("apOverrideStandard").value, document.getElementById("apOverridePremium").value];
+    var vals = raw.map(function (v) { var n = Number(v); return (v !== "" && !isNaN(n)) ? n : null; });
+    return vals.some(function (v) { return v != null; }) ? vals : null;
+  }
+
+  function apRenderPreview() {
+    if (!AP_META) return;
+    var type = document.getElementById("apPropType").value;
+    var units = parseInt(document.getElementById("apAcUnits").value, 10);
+    if (!units) return;
+    var prices = apPriceFor(type, units, apReadOverride());
+    var html = AP_META.tiers.map(function (tier, i) {
+      var annual = prices[i];
+      var perDay = annual / 365;
+      var plan = apMonthlyPlan(annual);
+      var flagged = i === 1;
+      return '<div class="card' + (flagged ? " flag" : "") + '" style="margin:0">' +
+        '<div style="padding:10px 12px;background:' + (flagged ? "var(--orange)" : "var(--navy)") + ';color:#fff;border-radius:8px 8px 0 0">' +
+          '<div style="font-weight:700;font-size:16px">' + tier + "</div></div>" +
+        '<div style="padding:12px">' +
+          '<div style="font-size:22px;font-weight:700;color:' + (flagged ? "var(--orange)" : "var(--navy)") + '">AED ' + Math.round(annual).toLocaleString() + "</div>" +
+          '<div class="hint">per year, incl. VAT &middot; AED ' + perDay.toFixed(2) + "/day</div>" +
+          '<div class="hint" style="margin-top:6px">Or AED ' + plan.deposit.toFixed(2) + " deposit, then AED " + plan.monthly.toFixed(2) + " &times; 11 months</div>" +
+          '<button class="btn ghost btn-sm" style="margin-top:10px;width:100%" data-create-contract="' + i + '">Create Contract &rarr;</button>' +
+        "</div></div>";
+    }).join("");
+    document.getElementById("apPreviewCards").innerHTML = html;
+  }
+
+  function apSaveCommRates() {
+    var rates = {
+      basic: { base: Number(document.getElementById("apRBasicBase").value), per: Number(document.getElementById("apRBasicPer").value) },
+      standard: { base: Number(document.getElementById("apRStandardBase").value), per: Number(document.getElementById("apRStandardPer").value) },
+      premium: { base: Number(document.getElementById("apRPremiumBase").value), per: Number(document.getElementById("apRPremiumPer").value) }
+    };
+    API.put("/api/amc-proposals/commercial-rates", { team: ACTIVE_TEAM, rates: rates }).then(function (r) {
+      AP_COMM_RATES = r.rates;
+      toast("Commercial rates saved for " + TEAM_LABELS[ACTIVE_TEAM]);
+      apRenderPreview();
+      acUpdateValueHint();
+    }).catch(function (err) { toast(err.message || "Could not save rates"); });
+  }
+
+  function apGenerateProposal() {
+    var body = {
+      team: ACTIVE_TEAM,
+      clientName: document.getElementById("apClientName").value.trim(),
+      propertyAddress: document.getElementById("apPropAddr").value.trim(),
+      propertyType: document.getElementById("apPropType").value,
+      acUnits: parseInt(document.getElementById("apAcUnits").value, 10),
+      validityDays: parseInt(document.getElementById("apValidity").value, 10)
+    };
+    var override = apReadOverride();
+    if (override) { body.overrideBasic = override[0]; body.overrideStandard = override[1]; body.overridePremium = override[2]; }
+    var hint = document.getElementById("apGenerateHint");
+    hint.textContent = "Generating…";
+    API.post("/api/amc-proposals", body).then(function (p) {
+      hint.textContent = "";
+      toast("Proposal generated");
+      window.open("/api/amc-proposals/" + p.id + "/pdf", "_blank");
+      loadAmcProposalsAll();
+    }).catch(function (err) {
+      hint.textContent = "";
+      toast(err.message || "Could not generate proposal");
+    });
+  }
+
+  function apCreateContractFromPreview(tierIdx) {
+    document.getElementById("acClientName").value = document.getElementById("apClientName").value;
+    document.getElementById("acPropAddr").value = document.getElementById("apPropAddr").value;
+    document.getElementById("acPropType").value = document.getElementById("apPropType").value;
+    apFillUnits("acPropType", "acAcUnits", false);
+    var unitsVal = document.getElementById("apAcUnits").value;
+    if ([].slice.call(document.getElementById("acAcUnits").options).some(function (o) { return o.value === unitsVal; })) {
+      document.getElementById("acAcUnits").value = unitsVal;
+    }
+    document.getElementById("acPackage").value = AP_META.tiers[tierIdx];
+    document.getElementById("acPayPlan").value = "onetime";
+    if (!document.getElementById("acStartDate").value) document.getElementById("acStartDate").value = todayISO();
+    acPendingProposalId = null;
+    acUpdateValueHint();
+    apSwitchSubtab("contract");
+  }
+
+  function apCreateContractFromLog(proposalId) {
+    var p = AP_PROPOSALS.filter(function (x) { return x.id === proposalId; })[0];
+    if (!p) return;
+    document.getElementById("acClientName").value = p.clientName === "(no name)" ? "" : (p.clientName || "");
+    document.getElementById("acPropAddr").value = p.propertyAddress || "";
+    document.getElementById("acPropType").value = p.propertyType;
+    apFillUnits("acPropType", "acAcUnits", false);
+    var unitsSel = document.getElementById("acAcUnits");
+    if ([].slice.call(unitsSel.options).some(function (o) { return o.value === String(p.acUnits); })) {
+      unitsSel.value = String(p.acUnits);
+    }
+    document.getElementById("acPackage").value = "Basic";
+    document.getElementById("acPayPlan").value = "onetime";
+    if (!document.getElementById("acStartDate").value) document.getElementById("acStartDate").value = todayISO();
+    acPendingProposalId = proposalId;
+    acUpdateValueHint();
+    apSwitchSubtab("contract");
+  }
+
+  function acUpdateValueHint() {
+    if (!AP_META) return;
+    var type = document.getElementById("acPropType").value;
+    var units = parseInt(document.getElementById("acAcUnits").value, 10);
+    var hint = document.getElementById("acContractValueHint");
+    if (!units) { hint.textContent = ""; return; }
+    var tierIdx = AP_META.tiers.indexOf(document.getElementById("acPackage").value);
+    var annual = apPriceFor(type, units, null)[tierIdx];
+    var payPlan = document.getElementById("acPayPlan").value;
+    if (payPlan === "monthly") {
+      var plan = apMonthlyPlan(annual);
+      hint.innerHTML = "<b>Contract value:</b> AED " + plan.deposit.toFixed(2) + " deposit, then AED " + plan.monthly.toFixed(2) + " &times; 11 monthly instalments (AED " + Math.round(plan.planTotal).toLocaleString() + " total, incl. VAT)";
+    } else {
+      hint.innerHTML = "<b>Contract value:</b> AED " + Math.round(annual).toLocaleString() + " paid upfront, incl. VAT";
+    }
+  }
+
+  function acGenerateContract() {
+    var body = {
+      team: ACTIVE_TEAM,
+      clientName: document.getElementById("acClientName").value.trim(),
+      propertyAddress: document.getElementById("acPropAddr").value.trim(),
+      propertyType: document.getElementById("acPropType").value,
+      acUnits: parseInt(document.getElementById("acAcUnits").value, 10),
+      package: document.getElementById("acPackage").value,
+      payPlan: document.getElementById("acPayPlan").value,
+      startDate: document.getElementById("acStartDate").value,
+      signatory: document.getElementById("acSignatory").value
+    };
+    if (acPendingProposalId) body.proposalId = acPendingProposalId;
+    var errBox = document.getElementById("acFormErrors");
+    errBox.style.display = "none";
+    API.post("/api/amc-contracts", body).then(function (c) {
+      toast("Contract generated");
+      window.open("/api/amc-contracts/" + c.id + "/pdf", "_blank");
+      acPendingProposalId = null;
+      loadAmcProposalsAll();
+    }).catch(function (err) {
+      errBox.textContent = err.message || "Could not generate contract";
+      errBox.style.display = "";
+    });
+  }
+
+  function acResetForm() {
+    document.getElementById("acClientName").value = "";
+    document.getElementById("acPropAddr").value = "";
+    document.getElementById("acPropType").value = "apartment";
+    apFillUnits("acPropType", "acAcUnits", false);
+    document.getElementById("acPackage").value = "Basic";
+    document.getElementById("acPayPlan").value = "onetime";
+    document.getElementById("acStartDate").value = "";
+    document.getElementById("acSignatory").value = "tegan";
+    acPendingProposalId = null;
+    acUpdateValueHint();
+  }
+
+  function apFmtDate(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso.length <= 10 ? iso + "T00:00:00" : iso);
+    if (isNaN(d.getTime())) return iso;
+    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return d.getDate() + " " + months[d.getMonth()] + " " + d.getFullYear();
+  }
+
+  function loadAmcProposalsAll() {
+    Promise.all([
+      API.get("/api/amc-proposals?team=" + encodeURIComponent(ACTIVE_TEAM)),
+      API.get("/api/amc-contracts?team=" + encodeURIComponent(ACTIVE_TEAM))
+    ]).then(function (res) {
+      AP_PROPOSALS = res[0].proposals;
+      AP_CONTRACTS = res[1].contracts;
+      apRenderLog();
+    }).catch(function () { toast("Could not load AMC Proposals data"); });
+  }
+
+  function apRenderLog() {
+    document.getElementById("apCntLog").textContent = AP_PROPOSALS.length;
+    document.getElementById("apProposalLogBody").innerHTML = AP_PROPOSALS.map(function (p) {
+      var badge = p.convertedToContractId ? ' <span style="display:inline-block;margin-left:6px;font-size:9px;font-weight:700;color:#1A6B3C;background:#EAF7EF;border:1px solid #BEE6CC;padding:2px 6px;border-radius:10px">Converted</span>' : "";
+      return "<tr>" +
+        "<td>" + apFmtDate(p.createdAt) + "</td>" +
+        "<td>" + escapeHtml(p.clientName || "(no name)") + badge + "</td>" +
+        "<td>" + escapeHtml(p.propertyAddress || "") + "</td>" +
+        "<td>" + AP_META.typeLabel[p.propertyType] + "</td>" +
+        "<td>" + p.acUnits + "</td>" +
+        "<td>" + Math.round(p.prices.basic).toLocaleString() + "</td>" +
+        "<td>" + Math.round(p.prices.standard).toLocaleString() + "</td>" +
+        "<td>" + Math.round(p.prices.premium).toLocaleString() + "</td>" +
+        "<td>" + apFmtDate(p.validUntil) + "</td>" +
+        "<td>" + escapeHtml(p.createdByEmail || "") + "</td>" +
+        '<td style="white-space:nowrap">' +
+          '<button class="btn ghost btn-sm" data-dl-proposal="' + p.id + '">Download</button> ' +
+          (p.convertedToContractId ? "" : '<button class="btn ghost btn-sm" data-cc-proposal="' + p.id + '">&rarr; Contract</button>') +
+        "</td></tr>";
+    }).join("") || '<tr><td colspan="11" class="hint">No proposals sent yet.</td></tr>';
+
+    document.getElementById("apContractLogBody").innerHTML = AP_CONTRACTS.map(function (c) {
+      var sig = (AP_META.signatories[c.signatory] || {}).name || c.signatory;
+      return "<tr>" +
+        "<td>" + apFmtDate(c.createdAt) + "</td>" +
+        "<td>" + escapeHtml(c.clientName || "") + "</td>" +
+        "<td>" + escapeHtml(c.propertyAddress || "") + "</td>" +
+        "<td>" + c.package + "</td>" +
+        "<td>" + (c.payPlan === "monthly" ? "Monthly" : "One-time") + "</td>" +
+        "<td>" + apFmtDate(c.startDate) + "</td>" +
+        "<td>" + escapeHtml(sig) + "</td>" +
+        "<td>AED " + Math.round(c.contractValueAnnual).toLocaleString() + "</td>" +
+        "<td>" + escapeHtml(c.createdByEmail || "") + "</td>" +
+        '<td><button class="btn ghost btn-sm" data-dl-contract="' + c.id + '">Download</button></td>' +
+        "</tr>";
+    }).join("") || '<tr><td colspan="10" class="hint">No contracts issued yet.</td></tr>';
+  }
+
+  function apSwitchSubtab(name) {
+    document.querySelectorAll(".amc-subtab[data-ap]").forEach(function (b) { b.classList.toggle("active", b.dataset.ap === name); });
+    ["builder", "contract", "log"].forEach(function (n) {
+      var panel = document.getElementById("ap-" + n);
+      if (n === name) { panel.style.display = ""; panel.classList.add("active"); } else { panel.style.display = "none"; panel.classList.remove("active"); }
+    });
+  }
+
+  function initAmcProposals() {
+    document.querySelectorAll(".amc-subtab[data-ap]").forEach(function (btn) {
+      btn.addEventListener("click", function () { apSwitchSubtab(btn.dataset.ap); });
+    });
+
+    document.getElementById("apPropType").addEventListener("change", function () {
+      apFillUnits("apPropType", "apAcUnits", false);
+      apUpdateCommCardVisibility();
+      apRenderPreview();
+    });
+    ["apAcUnits", "apOverrideBasic", "apOverrideStandard", "apOverridePremium"].forEach(function (id) {
+      document.getElementById(id).addEventListener("input", apRenderPreview);
+      document.getElementById(id).addEventListener("change", apRenderPreview);
+    });
+    document.getElementById("apBtnSaveRates").addEventListener("click", apSaveCommRates);
+    document.getElementById("apBtnGenerate").addEventListener("click", apGenerateProposal);
+    document.getElementById("apPreviewCards").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-create-contract]");
+      if (btn) apCreateContractFromPreview(parseInt(btn.dataset.createContract, 10));
+    });
+
+    document.getElementById("acPropType").addEventListener("change", function () {
+      apFillUnits("acPropType", "acAcUnits", false);
+      acUpdateValueHint();
+    });
+    ["acAcUnits", "acPackage", "acPayPlan"].forEach(function (id) {
+      document.getElementById(id).addEventListener("change", acUpdateValueHint);
+    });
+    document.getElementById("acBtnGenerate").addEventListener("click", acGenerateContract);
+    document.getElementById("acBtnClear").addEventListener("click", acResetForm);
+
+    document.getElementById("apProposalLogBody").addEventListener("click", function (e) {
+      var dl = e.target.closest("[data-dl-proposal]");
+      if (dl) { window.open("/api/amc-proposals/" + dl.dataset.dlProposal + "/pdf", "_blank"); return; }
+      var cc = e.target.closest("[data-cc-proposal]");
+      if (cc) apCreateContractFromLog(cc.dataset.ccProposal);
+    });
+    document.getElementById("apContractLogBody").addEventListener("click", function (e) {
+      var dl = e.target.closest("[data-dl-contract]");
+      if (dl) window.open("/api/amc-contracts/" + dl.dataset.dlContract + "/pdf", "_blank");
+    });
+  }
+
   function boot() {
     initTabs();
     initCollapsibleCards();
     initPrintFix();
+    initTeamSwitch();
     initBuilder();
     wirePricebookV2();
     wireCompanySettings();
@@ -1894,6 +3096,10 @@
     wireWizardTrigger();
     wireJobberHelper();
     wireLogout();
+    initAmcTracker();
+    loadAmcMeta();
+    initAmcProposals();
+    loadAmcProposalsMeta();
     loadWizardData();
     applyRoleVisibility();
     loadHome();

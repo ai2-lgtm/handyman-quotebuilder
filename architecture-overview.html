@@ -1,0 +1,338 @@
+<title>Quote Builder Architecture</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --ink:#182338; --ink-soft:#4d5872; --line:#ded7c8; --line-soft:#ece7d9;
+    --paper:#f7f4ec; --panel:#ffffff;
+    --navy:#0c2c5c; --navy-soft:#e7ecf5;
+    --orange:#d9600c; --orange-soft:#fbead9;
+    --green:#1e7a4c; --green-soft:#e5f3ea;
+    --amber:#a8650f; --amber-soft:#faf0dd;
+    --red:#ac3320; --red-soft:#fae6e1;
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,'Segoe UI',sans-serif;
+    --mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#eef1f8; --ink-soft:#aab2c8; --line:#3a4361; --line-soft:#2a3049;
+      --paper:#121729; --panel:#1a2036;
+      --navy:#7c9fe0; --navy-soft:#1d2947;
+      --orange:#f0904f; --orange-soft:#3a2413;
+      --green:#6fcc9a; --green-soft:#123324;
+      --amber:#e0ab5f; --amber-soft:#332708;
+      --red:#e88a78; --red-soft:#3a1a14;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#eef1f8; --ink-soft:#aab2c8; --line:#3a4361; --line-soft:#2a3049;
+    --paper:#121729; --panel:#1a2036;
+    --navy:#7c9fe0; --navy-soft:#1d2947;
+    --orange:#f0904f; --orange-soft:#3a2413;
+    --green:#6fcc9a; --green-soft:#123324;
+    --amber:#e0ab5f; --amber-soft:#332708;
+    --red:#e88a78; --red-soft:#3a1a14;
+  }
+
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.6;}
+  .wrap{max-width:920px;margin:0 auto;padding-inline:24px;padding-block:56px 90px;}
+
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--orange);margin:0 0 14px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(32px,5vw,46px);line-height:1.08;margin:0 0 14px;text-wrap:balance;color:var(--ink);}
+  .lede{font-size:16.5px;color:var(--ink-soft);max-width:62ch;margin:0 0 6px;}
+  .meta-row{display:flex;gap:18px;flex-wrap:wrap;margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--ink-soft);}
+  .meta-row b{color:var(--ink);font-weight:600;}
+
+  h2{font-family:var(--serif);font-weight:600;font-size:25px;color:var(--ink);margin:64px 0 6px;text-wrap:balance;}
+  h2 .num{font-family:var(--mono);font-size:13px;color:var(--orange);font-weight:600;letter-spacing:.05em;display:block;margin-bottom:6px;}
+  .section-intro{font-size:15px;color:var(--ink-soft);max-width:66ch;margin:0 0 26px;}
+  h3{font-family:var(--sans);font-weight:600;font-size:15.5px;color:var(--ink);margin:28px 0 10px;}
+
+  p{max-width:70ch;}
+  code{font-family:var(--mono);font-size:.91em;background:var(--line-soft);padding:.1em .38em;border-radius:4px;color:var(--ink);}
+
+  /* ---- diagram ---- */
+  .diagram-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 24px;margin:22px 0 8px;overflow-x:auto;}
+  .diagram-card svg{display:block;margin:0 auto;max-width:100%;height:auto;}
+  .diagram-caption{font-size:12.5px;color:var(--ink-soft);text-align:center;margin-top:14px;}
+
+  /* ---- tables ---- */
+  .tbl-wrap{overflow-x:auto;margin:18px 0 8px;border:1px solid var(--line);border-radius:10px;}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--panel);min-width:520px;}
+  thead th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;padding:11px 14px;background:var(--line-soft);border-bottom:1px solid var(--line);white-space:nowrap;}
+  td{padding:10px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  td code{white-space:nowrap;}
+  .col-narrow{white-space:nowrap;}
+
+  /* ---- sequence ---- */
+  .seq{counter-reset:step;list-style:none;margin:20px 0;padding:0;border-left:2px solid var(--line);}
+  .seq li{position:relative;padding:2px 0 22px 26px;}
+  .seq li:last-child{padding-bottom:2px;}
+  .seq li::before{counter-increment:step;content:counter(step);position:absolute;left:-13px;top:0;width:24px;height:24px;border-radius:50%;background:var(--navy);color:var(--panel);font-family:var(--mono);font-size:11.5px;font-weight:600;display:flex;align-items:center;justify-content:center;}
+  .seq .step-title{font-weight:600;font-size:14.5px;margin-bottom:2px;}
+  .seq .step-body{font-size:13.5px;color:var(--ink-soft);max-width:64ch;}
+
+  /* ---- pill / chip ---- */
+  .pill{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+  .pill-verify{background:var(--amber-soft);color:var(--amber);}
+  .pill-recommended{background:var(--navy-soft);color:var(--navy);}
+  .pill-info{background:var(--line-soft);color:var(--ink-soft);}
+  .pill-risk{background:var(--red-soft);color:var(--red);}
+  .pill-good{background:var(--green-soft);color:var(--green);}
+
+  /* ---- checklist / risk cards ---- */
+  .risk-list{display:flex;flex-direction:column;gap:10px;margin:18px 0 8px;}
+  .risk-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;gap:14px;align-items:flex-start;}
+  .risk-card .pill{flex:0 0 auto;margin-top:2px;}
+  .risk-card .risk-title{font-weight:600;font-size:14px;margin-bottom:3px;}
+  .risk-card .risk-body{font-size:13px;color:var(--ink-soft);}
+  .risk-card .risk-body code{font-size:.88em;}
+
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:18px 0 8px;}
+  @media (max-width:680px){.two-col{grid-template-columns:1fr;}}
+  .stat-tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+  .stat-tile .stat-lbl{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin-bottom:6px;}
+  .stat-tile .stat-val{font-family:var(--serif);font-size:22px;font-weight:600;color:var(--navy);}
+  .stat-tile .stat-sub{font-size:12.5px;color:var(--ink-soft);margin-top:4px;}
+
+  .callout{background:var(--orange-soft);border:1px solid color-mix(in srgb, var(--orange) 35%, var(--line));border-radius:10px;padding:16px 18px;margin:18px 0;font-size:13.5px;color:var(--ink);}
+  .callout b{color:var(--orange);}
+
+  footer{margin-top:80px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-soft);font-family:var(--mono);}
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">Internal architecture reference</p>
+  <h1>How the Quote Builder is put together</h1>
+  <p class="lede">A plain-language walk through the system Handyman.ae's 7–8 staff use daily: what runs where, how a request moves through it, what the database looks like, and what to watch running this on Railway.</p>
+  <div class="meta-row">
+    <span><b>Stack</b> Python 3 stdlib + SQLite + vanilla JS</span>
+    <span><b>Hosting</b> Railway (single container)</span>
+    <span><b>Concurrent users</b> ~7–8</span>
+    <span><b>Dependencies</b> zero (pip)</span>
+  </div>
+
+  <h2><span class="num">01</span>System at a glance</h2>
+  <p class="section-intro">One Python process does everything: it serves the static front end, answers every API call, and talks directly to a single SQLite file. There's no separate database server, no build step, and no background workers — by design, for a tool this size.</p>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, sans-serif">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"></path>
+        </marker>
+      </defs>
+
+      <!-- browsers -->
+      <g>
+        <rect x="16" y="24" width="150" height="46" rx="8" fill="var(--navy-soft)" stroke="var(--navy)" stroke-width="1.2"></rect>
+        <text x="91" y="43" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--navy)">7–8 staff browsers</text>
+        <text x="91" y="59" text-anchor="middle" font-size="10.5" fill="var(--ink-soft)">Overview · New Quote · Price Book</text>
+      </g>
+
+      <line x1="91" y1="70" x2="91" y2="108" stroke="var(--ink-soft)" stroke-width="1.2" marker-end="url(#arrow)"></line>
+      <text x="101" y="93" font-size="10" fill="var(--ink-soft)">HTTPS</text>
+
+      <!-- Railway container -->
+      <rect x="16" y="108" width="430" height="168" rx="12" fill="var(--panel)" stroke="var(--line)" stroke-width="1.4" stroke-dasharray="4 3"></rect>
+      <text x="32" y="130" font-size="10.5" letter-spacing="0.06em" fill="var(--orange)" font-family="IBM Plex Mono, monospace">RAILWAY — SINGLE CONTAINER</text>
+
+      <rect x="32" y="140" width="200" height="60" rx="8" fill="var(--orange-soft)" stroke="var(--orange)" stroke-width="1.2"></rect>
+      <text x="132" y="163" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">server.py</text>
+      <text x="132" y="178" text-anchor="middle" font-size="10" fill="var(--ink-soft)">wsgiref, threaded</text>
+      <text x="132" y="191" text-anchor="middle" font-size="10" fill="var(--ink-soft)">routes + static files</text>
+
+      <rect x="250" y="140" width="176" height="60" rx="8" fill="var(--line-soft)" stroke="var(--line)" stroke-width="1.2"></rect>
+      <text x="338" y="163" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">auth.py / pricing.py</text>
+      <text x="338" y="178" text-anchor="middle" font-size="10" fill="var(--ink-soft)">session + margin logic</text>
+      <text x="338" y="191" text-anchor="middle" font-size="10" fill="var(--ink-soft)">stdlib only</text>
+
+      <line x1="232" y1="170" x2="250" y2="170" stroke="var(--ink-soft)" stroke-width="1.1" marker-end="url(#arrow)"></line>
+
+      <line x1="132" y1="200" x2="132" y2="228" stroke="var(--ink-soft)" stroke-width="1.2" marker-end="url(#arrow)"></line>
+      <rect x="32" y="228" width="200" height="34" rx="7" fill="var(--navy-soft)" stroke="var(--navy)" stroke-width="1.1"></rect>
+      <text x="132" y="249" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--navy)">Railway Volume</text>
+      <text x="345" y="249" text-anchor="start" font-size="10" fill="var(--ink-soft)" font-family="IBM Plex Mono, monospace"></text>
+
+      <!-- google oauth -->
+      <line x1="446" y1="150" x2="486" y2="150" stroke="var(--ink-soft)" stroke-width="1.2" marker-end="url(#arrow)"></line>
+      <rect x="486" y="122" width="160" height="56" rx="8" fill="var(--panel)" stroke="var(--line)" stroke-width="1.2"></rect>
+      <text x="566" y="146" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">Google OAuth</text>
+      <text x="566" y="161" text-anchor="middle" font-size="10" fill="var(--ink-soft)">Sign in with Google</text>
+
+      <!-- DB file detail, off to the side -->
+      <line x1="232" y1="245" x2="486" y2="245" stroke="var(--ink-soft)" stroke-width="1.1" marker-end="url(#arrow)"></line>
+      <rect x="486" y="222" width="230" height="46" rx="8" fill="var(--green-soft)" stroke="var(--green)" stroke-width="1.2"></rect>
+      <text x="601" y="242" text-anchor="middle" font-size="12" font-weight="600" fill="var(--green)" font-family="IBM Plex Mono, monospace">handyman.db</text>
+      <text x="601" y="257" text-anchor="middle" font-size="10" fill="var(--ink-soft)">one SQLite file, one writer at a time</text>
+
+      <text x="132" y="292" text-anchor="middle" font-size="10" fill="var(--ink-soft)">DATA_DIR must point here — see §7</text>
+    </svg>
+    <p class="diagram-caption">Every browser talks to the same process; that process is the only thing that talks to the database file.</p>
+  </div>
+
+  <h2><span class="num">02</span>Tech stack</h2>
+  <p class="section-intro">Chosen deliberately for a small internal tool: nothing to install, nothing to build, nothing to patch for CVEs in a dependency tree.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Layer</th><th>What it is</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td class="col-narrow">Backend</td><td><code>server.py</code> — a raw WSGI app (<code>application(environ, start_response)</code>), routed by hand with <code>re.match</code> against <code>/api/...</code> paths</td><td>No framework tax; every route is a plain Python function you can read top to bottom</td></tr>
+        <tr><td class="col-narrow">Auth</td><td><code>auth.py</code> — Google OAuth only, domain-restricted, session tokens in SQLite</td><td>No passwords to store, reset, or leak</td></tr>
+        <tr><td class="col-narrow">Pricing engine</td><td><code>pricing.py</code> — cost/markup/margin math shared by the quote form and the server</td><td>One formula, not two copies drifting apart</td></tr>
+        <tr><td class="col-narrow">Database</td><td>SQLite, one file, accessed via <code>sqlite3</code> — a fresh connection per request</td><td>Zero-ops at this scale; the whole database is one file you can copy</td></tr>
+        <tr><td class="col-narrow">Frontend</td><td><code>public/index.html</code> + <code>app.js</code> (~2,000 lines) + <code>styles.css</code> — no React, no bundler</td><td><code>Ctrl+S</code> and reload is the entire build pipeline</td></tr>
+        <tr><td class="col-narrow">PDF / print</td><td>Browser-native <code>window.print()</code> against a dedicated <code>@media print</code> stylesheet</td><td>No server-side rendering service to run</td></tr>
+        <tr><td class="col-narrow">Dependencies</td><td><code>requirements.txt</code> is empty</td><td>Standard library end to end</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="num">03</span>What happens when someone signs in</h2>
+  <p class="section-intro">There's no password anywhere in this system. Google verifies the person; the app only checks which domain their email belongs to.</p>
+  <ol class="seq">
+    <li><div class="step-title">Redirect to Google</div><div class="step-body"><code>GET /api/auth/google/start</code> generates a random <code>state</code> token (CSRF guard), stores it in <code>oauth_states</code>, and redirects to Google's consent screen.</div></li>
+    <li><div class="step-title">Google calls back</div><div class="step-body"><code>GET /api/auth/google/callback</code> checks <code>state</code>, exchanges the auth code for an access token, and reads the person's email.</div></li>
+    <li><div class="step-title">Domain check</div><div class="step-body">The email's domain must be one of <code>handyman.ae</code>, <code>kenzieclean.ae</code>, <code>legacygroup.me</code> — anything else is rejected before a session is ever created.</div></li>
+    <li><div class="step-title">User row + role</div><div class="step-body">First sign-in creates a row in <code>users</code>. Role is <code>staff</code> by default, or <code>admin</code> if the email is in <code>admin_allowlist</code> — set once at boot from <code>ADMIN_SEED_EMAILS</code>, editable after that from Users &amp; Access.</div></li>
+    <li><div class="step-title">Session cookie</div><div class="step-body">A random token goes into <code>sessions</code> (30-day expiry) and back to the browser as <code>hm_session</code> — <code>HttpOnly</code>, <code>SameSite=Lax</code>, and <code>Secure</code> whenever <code>FORCE_SECURE_COOKIE=1</code>.</div></li>
+    <li><div class="step-title">Every request after that</div><div class="step-body"><code>get_session_user()</code> reads the cookie, joins <code>sessions → users</code>, and hands the route its caller — or <code>401</code>s. Routes that need <code>role='admin'</code> check it explicitly and <code>403</code> otherwise.</div></li>
+  </ol>
+
+  <h2><span class="num">04</span>Data model</h2>
+  <p class="section-intro">One SQLite file, 19 tables. Grouped here by what they're for rather than alphabetically.</p>
+
+  <h3>Quotes — the core workflow</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Table</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>quotes</code></td><td>One row per quote version — client/job details plus every pricing figure (cost, markup, margin, VAT, grand total) pre-computed at save time. <code>status</code> moves Draft → Approval Required → Sent to Jobber; <code>root_quote_id</code> / <code>parent_quote_id</code> / <code>revision_number</code> chain revisions of the same job.</td></tr>
+        <tr><td><code>quote_items</code></td><td>Line items (material / staff labour / outside labour / fixed service / project management / other), each with its own cost, sell and markup — not a shared multiplier.</td></tr>
+        <tr><td><code>quote_audit_log</code></td><td>Who created, edited, approved or sent each quote, with before/after snapshots — the paper trail behind the "History" panel.</td></tr>
+        <tr><td><code>quote_templates</code> / <code>quote_template_items</code></td><td>Reusable line-item bundles (e.g. "50L Water Heater Replacement") staff can drop into a new quote in one click.</td></tr>
+        <tr><td><code>counters</code></td><td>One row (<code>quote_no</code>) — allocated atomically via <code>BEGIN IMMEDIATE</code> so two staff saving at the same instant can never receive the same quote number.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Price Book — now split by location</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Table</th><th>Scope</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>pb_materials</code></td><td class="col-narrow"><span class="pill pill-info">per team</span></td><td>Parts &amp; consumables — cost, default sell, brand, supplier.</td></tr>
+        <tr><td><code>pb_labour</code></td><td class="col-narrow"><span class="pill pill-info">per team</span></td><td>Staff and outside-labour day/hour rates.</td></tr>
+        <tr><td><code>pb_fixed_services</code></td><td class="col-narrow"><span class="pill pill-info">per team</span></td><td>Flat-rate services (e.g. "Split AC Full Service").</td></tr>
+        <tr><td><code>pb_suppliers</code></td><td class="col-narrow"><span class="pill pill-info">per team</span></td><td>Parts vendors by category, with contact details and a preferred flag.</td></tr>
+        <tr><td><code>pb_contractors</code> / <code>pb_contractor_pricing</code></td><td class="col-narrow"><span class="pill pill-good">global</span></td><td>Subcontractors who bill the client directly (e.g. the MAG City cleaning partner), each with its own nested rate card — shared across locations since one contractor can serve both.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:13.5px;color:var(--ink-soft);margin-top:6px">"Per team" means a <code>team</code> column scoped to <code>dubai</code> or <code>magcity</code> — added this session. Every pre-existing row defaulted to <code>dubai</code>; MAG City starts empty, same as the source price list it was ported from.</p>
+
+  <h3>Accounts &amp; configuration</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Table</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>users</code> / <code>sessions</code> / <code>admin_allowlist</code> / <code>oauth_states</code></td><td>Identity and login state — see §3.</td></tr>
+        <tr><td><code>app_settings</code></td><td>Company-wide defaults: VAT %, max discount, hourly rate, margin target band.</td></tr>
+        <tr><td><code>categories</code> / <code>subcategories</code></td><td>The older Guided-Wizard service taxonomy (AC, Plumbing, Electrical…) — a separate, earlier catalog from the Price Book above, still used by "Start Guided Add."</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="num">05</span>Handling 7–8 people at once</h2>
+  <p class="section-intro">This is the part worth understanding precisely, because it's also the system's tightest constraint.</p>
+
+  <div class="two-col">
+    <div class="stat-tile">
+      <div class="stat-lbl">Request handling</div>
+      <div class="stat-val">1 thread / request</div>
+      <div class="stat-sub"><code>ThreadingMixIn</code> over Python's built-in <code>wsgiref</code> server — every request gets its own thread, so 7–8 people clicking around concurrently is not a bottleneck on its own.</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-lbl">Database writes</div>
+      <div class="stat-val">1 writer at a time</div>
+      <div class="stat-sub">SQLite allows one writer across the <em>entire file</em>. A second save that arrives mid-write queues for up to <code>busy_timeout=5000</code>ms, then fails if the first still hasn't finished.</div>
+    </div>
+  </div>
+
+  <p>In practice, a quote save takes single-digit milliseconds, so two staff saving within the same 5-second window essentially never collide — this comfortably covers 7–8 people. It stops being comfortable if usage grows into dozens of concurrent writers, or one request starts holding a write lock for longer (a large bulk import, say).</p>
+
+  <p>Every SQLite connection is opened fresh per request (<code>get_conn()</code>) and closed at the end of the function — there's no shared connection or pool to exhaust, and no connection state to leak between requests.</p>
+
+  <h2><span class="num">06</span>Frontend model</h2>
+  <p class="section-intro">One HTML file, one script, no router — "tabs" are just <code>&lt;section&gt;</code> elements toggled with <code>display:none</code>.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Where state lives</th><th>What's there</th></tr></thead>
+      <tbody>
+        <tr><td>Server (SQLite)</td><td>Every quote, price book item, user, and setting — the single source of truth.</td></tr>
+        <tr><td>Browser memory (one JS closure)</td><td>The quote currently being edited, the loaded Price Book catalog, the wizard's in-progress answers.</td></tr>
+        <tr><td><code>localStorage</code></td><td>Per-browser convenience only, never authoritative: an autosaved draft of the open quote, the last technician/staff used, and which location (Dubai / MAG City) is active.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="num">07</span>Running on Railway</h2>
+  <p class="section-intro">The Procfile (<code>web: python server.py</code>) runs the same entry point as local development — <code>main()</code> calls <code>init_db()</code> then starts serving. That has two direct consequences worth being deliberate about.</p>
+
+  <div class="callout"><b>Bind address:</b> <code>HOST</code> defaults to <code>127.0.0.1</code>, which is unreachable from outside the container. Railway's routing needs <code>HOST=0.0.0.0</code> set explicitly as an environment variable, or the deploy will look healthy in logs while serving nothing externally.</div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Variable</th><th>Purpose</th><th>Railway setting</th></tr></thead>
+      <tbody>
+        <tr><td><code>HOST</code></td><td>Interface the server binds to</td><td><code>0.0.0.0</code> — required</td></tr>
+        <tr><td><code>PORT</code></td><td>Listen port</td><td>Railway injects this automatically</td></tr>
+        <tr><td><code>DATA_DIR</code></td><td>Where <code>handyman.db</code> lives</td><td>A path on a mounted <b>Volume</b> — e.g. <code>/data</code> — or every redeploy silently resets the database</td></tr>
+        <tr><td><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code></td><td>OAuth credentials</td><td>From Google Cloud Console, set as secrets</td></tr>
+        <tr><td><code>GOOGLE_REDIRECT_URI</code></td><td>OAuth callback URL</td><td>Your Railway public URL + <code>/api/auth/google/callback</code></td></tr>
+        <tr><td><code>FORCE_SECURE_COOKIE</code></td><td>Marks the session cookie <code>Secure</code></td><td><code>1</code> — Railway serves HTTPS by default, so this should always be on in production</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Container filesystems on Railway are ephemeral by default — anything written outside a mounted Volume disappears on the next deploy, restart, or scale event. Since <code>handyman.db</code> is the entire database, confirming <code>DATA_DIR</code> points at a real Volume isn't optional configuration, it's the difference between persistent and disposable data.</p>
+
+  <h2><span class="num">08</span>Known limitations &amp; recommendations</h2>
+  <p class="section-intro">Nothing here is urgent at 7–8 concurrent users. Listed in the order they'd start to matter if usage grows.</p>
+
+  <div class="risk-list">
+    <div class="risk-card">
+      <span class="pill pill-verify">Verify</span>
+      <div><div class="risk-title">Confirm the Volume is actually mounted at <code>DATA_DIR</code></div><div class="risk-body">This is the single highest-impact thing to check — everything else in this document assumes the database survives a redeploy.</div></div>
+    </div>
+    <div class="risk-card">
+      <span class="pill pill-risk">Don't scale horizontally</span>
+      <div><div class="risk-title">Keep this at one Railway replica</div><div class="risk-body">Two instances would each open their own connection to the same SQLite file (or worse, diverge onto separate Volumes). This architecture is single-writer by design — scale it vertically (more CPU/RAM on one instance), not by adding replicas.</div></div>
+    </div>
+    <div class="risk-card">
+      <span class="pill pill-recommended">Recommended</span>
+      <div><div class="risk-title">Turn on WAL mode</div><div class="risk-body">One line — <code>conn.execute("PRAGMA journal_mode=WAL")</code> in <code>get_conn()</code> — lets reads proceed while a write is in progress, instead of the default rollback-journal behavior where they briefly queue behind it. Cheap insurance as usage grows past 7–8.</div></div>
+    </div>
+    <div class="risk-card">
+      <span class="pill pill-recommended">Recommended</span>
+      <div><div class="risk-title">Back up <code>handyman.db</code> on a schedule</div><div class="risk-body">It's a single file — a nightly copy to external storage (S3, Railway's own backups, anywhere off-Volume) is the entire disaster-recovery plan and costs almost nothing to set up.</div></div>
+    </div>
+    <div class="risk-card">
+      <span class="pill pill-info">Informational</span>
+      <div><div class="risk-title"><code>wsgiref</code> is a development-grade server</div><div class="risk-body">It's what's actually running in production here (via <code>main()</code>), not just local dev — fine at this traffic level, but it wasn't hardened for the internet at large (slow clients, malformed requests). Worth swapping for <code>waitress</code> or <code>gunicorn</code> if this ever faces more than internal, allow-listed traffic.</div></div>
+    </div>
+    <div class="risk-card">
+      <span class="pill pill-info">Informational</span>
+      <div><div class="risk-title"><code>passenger_wsgi.py</code> is unused here</div><div class="risk-body">It exists for a SiteGround/Passenger deployment path that predates Railway. Harmless to leave, safe to ignore.</div></div>
+    </div>
+  </div>
+
+  <footer>Reflects the codebase as of this session, including the multi-location (Dubai / MAG City) and Suppliers/Contractors work added here. Written for the people running the app day to day, not as a formal spec.</footer>
+
+</div>
