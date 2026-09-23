@@ -1357,10 +1357,20 @@
       "<td>" + escapeHtml((m.lastUpdated || "").slice(0, 10)) + "</td>" +
       '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
     if (isAdmin) {
+      var actions = tr.querySelector(".pb-actions");
       var editBtn = document.createElement("button");
       editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
       editBtn.addEventListener("click", function () { tr.replaceWith(buildMaterialEditRow(m, isAdmin)); });
-      tr.querySelector(".pb-actions").appendChild(editBtn);
+      actions.appendChild(editBtn);
+      var delBtn = document.createElement("button");
+      delBtn.className = "btn btn-ghost btn-sm"; delBtn.textContent = "Delete"; delBtn.style.marginLeft = "6px";
+      delBtn.addEventListener("click", function () {
+        confirmDialog('Remove material "' + m.itemName + '"?').then(function (ok) {
+          if (!ok) return;
+          API.del("/api/pricebook/materials/" + m.id).then(function () { toast("Removed"); reloadPbMaterials(); }).catch(function () { toast("Could not remove"); });
+        });
+      });
+      actions.appendChild(delBtn);
     }
     return tr;
   }
@@ -1425,10 +1435,20 @@
       "<td>" + escapeHtml((l.lastUpdated || "").slice(0, 10)) + "</td>" +
       '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
     if (isAdmin) {
+      var actions = tr.querySelector(".pb-actions");
       var editBtn = document.createElement("button");
       editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
       editBtn.addEventListener("click", function () { tr.replaceWith(buildLabourEditRow(l, isAdmin)); });
-      tr.querySelector(".pb-actions").appendChild(editBtn);
+      actions.appendChild(editBtn);
+      var delBtn = document.createElement("button");
+      delBtn.className = "btn btn-ghost btn-sm"; delBtn.textContent = "Delete"; delBtn.style.marginLeft = "6px";
+      delBtn.addEventListener("click", function () {
+        confirmDialog('Remove labour rate "' + l.roleName + '"?').then(function (ok) {
+          if (!ok) return;
+          API.del("/api/pricebook/labour/" + l.id).then(function () { toast("Removed"); reloadPbLabour(); }).catch(function () { toast("Could not remove"); });
+        });
+      });
+      actions.appendChild(delBtn);
     }
     return tr;
   }

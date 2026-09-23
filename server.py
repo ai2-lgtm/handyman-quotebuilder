@@ -1916,6 +1916,14 @@ def update_pb_material(mid, body):
     return json_response(200, pb_material_to_dict(row))
 
 
+def delete_pb_material(mid):
+    conn = get_conn()
+    conn.execute("DELETE FROM pb_materials WHERE id=?", (mid,))
+    conn.commit()
+    conn.close()
+    return json_response(200, {"ok": True})
+
+
 def list_pb_labour(query):
     conn = get_conn()
     sql = "SELECT * FROM pb_labour WHERE team=?"
@@ -1961,6 +1969,14 @@ def update_pb_labour(lid, body):
     row = conn.execute("SELECT * FROM pb_labour WHERE id=?", (lid,)).fetchone()
     conn.close()
     return json_response(200, pb_labour_to_dict(row))
+
+
+def delete_pb_labour(lid):
+    conn = get_conn()
+    conn.execute("DELETE FROM pb_labour WHERE id=?", (lid,))
+    conn.commit()
+    conn.close()
+    return json_response(200, {"ok": True})
 
 
 def list_pb_fixed_services(query):
@@ -3255,6 +3271,18 @@ def handle_delete(environ, path):
         conn.commit()
         conn.close()
         return json_response(200, {"ok": True})
+
+    m = re.match(r"^/api/pricebook/materials/([\w-]+)$", path)
+    if m:
+        if not is_admin(user):
+            return forbidden()
+        return delete_pb_material(m.group(1))
+
+    m = re.match(r"^/api/pricebook/labour/([\w-]+)$", path)
+    if m:
+        if not is_admin(user):
+            return forbidden()
+        return delete_pb_labour(m.group(1))
 
     m = re.match(r"^/api/pricebook/suppliers/([\w-]+)$", path)
     if m:
