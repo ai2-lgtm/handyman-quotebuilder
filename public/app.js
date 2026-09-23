@@ -47,19 +47,29 @@
     setTimeout(function () { t.classList.remove("show"); }, 2600);
   }
 
-  function confirmDialog(message) {
+  // labels is optional {confirmLabel, cancelLabel} - this modal is shared by
+  // every confirm dialog in the app, so its buttons default back to
+  // "Cancel"/"Yes, continue" after each use rather than leaking a custom
+  // label (e.g. "No, Dubai only") into the next, unrelated confirmation.
+  function confirmDialog(message, labels) {
     return new Promise(function (resolve) {
       var overlay = document.getElementById("modalOverlay");
       document.getElementById("modalMessage").textContent = message;
+      var confirmBtn = document.getElementById("modalConfirm");
+      var cancelBtn = document.getElementById("modalCancel");
+      var defaultConfirmLabel = confirmBtn.textContent;
+      var defaultCancelLabel = cancelBtn.textContent;
+      confirmBtn.textContent = (labels && labels.confirmLabel) || defaultConfirmLabel;
+      cancelBtn.textContent = (labels && labels.cancelLabel) || defaultCancelLabel;
       overlay.classList.add("show");
       function cleanup(result) {
         overlay.classList.remove("show");
         confirmBtn.removeEventListener("click", onConfirm);
         cancelBtn.removeEventListener("click", onCancel);
+        confirmBtn.textContent = defaultConfirmLabel;
+        cancelBtn.textContent = defaultCancelLabel;
         resolve(result);
       }
-      var confirmBtn = document.getElementById("modalConfirm");
-      var cancelBtn = document.getElementById("modalCancel");
       function onConfirm() { cleanup(true); }
       function onCancel() { cleanup(false); }
       confirmBtn.addEventListener("click", onConfirm);
@@ -1267,7 +1277,10 @@
   // the original create, just aimed at `team` instead.
   function maybeDuplicateToOtherTeam(itemLabel, createForTeam) {
     var other = otherTeam(ACTIVE_TEAM);
-    return confirmDialog("Also add this " + itemLabel + " to " + TEAM_LABELS[other] + "?").then(function (yes) {
+    return confirmDialog(
+      "This " + itemLabel + " has been added to " + TEAM_LABELS[ACTIVE_TEAM] + ". Also add it to " + TEAM_LABELS[other] + "?",
+      { confirmLabel: "Yes, add to " + TEAM_LABELS[other] + " too", cancelLabel: "No, " + TEAM_LABELS[ACTIVE_TEAM] + " only" }
+    ).then(function (yes) {
       if (!yes) return;
       return createForTeam(other).then(function () {
         toast("Added to " + TEAM_LABELS[other] + " too");
@@ -1332,102 +1345,195 @@
     }).catch(function () { toast("Could not load contractors"); });
   }
 
-  function pbEditableCell(value, onSave) {
-    return { value: value, onSave: onSave };
+  function buildMaterialViewRow(m, isAdmin) {
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + escapeHtml(m.category || "—") + "</td><td>" + escapeHtml(m.itemName) + "</td>" +
+      "<td>" + escapeHtml(m.brand || "—") + "</td><td>" + escapeHtml(m.modelOrSize || "—") + "</td>" +
+      "<td>" + escapeHtml(m.unit || "—") + "</td>" +
+      '<td class="num">' + (m.cost == null ? "—" : fmt(m.cost)) + "</td>" +
+      '<td class="num">' + (m.defaultSell == null ? "—" : fmt(m.defaultSell)) + "</td>" +
+      "<td>" + escapeHtml(m.supplier || "—") + "</td>" +
+      "<td>" + escapeHtml((m.lastUpdated || "").slice(0, 10)) + "</td>" +
+      '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
+    if (isAdmin) {
+      var editBtn = document.createElement("button");
+      editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", function () { tr.replaceWith(buildMaterialEditRow(m, isAdmin)); });
+      tr.querySelector(".pb-actions").appendChild(editBtn);
+    }
+    return tr;
+  }
+
+  function buildMaterialEditRow(m, isAdmin) {
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td><input type="text" class="mr-cat" value="' + escapeAttr(m.category || "") + '"></td>' +
+      '<td><input type="text" class="mr-item" value="' + escapeAttr(m.itemName || "") + '"></td>' +
+      '<td><input type="text" class="mr-brand" value="' + escapeAttr(m.brand || "") + '"></td>' +
+      '<td><input type="text" class="mr-model" value="' + escapeAttr(m.modelOrSize || "") + '"></td>' +
+      '<td><input type="text" class="mr-unit" value="' + escapeAttr(m.unit || "") + '"></td>' +
+      '<td><input type="number" class="mr-cost" value="' + (m.cost == null ? "" : m.cost) + '"></td>' +
+      '<td><input type="number" class="mr-sell" value="' + (m.defaultSell == null ? "" : m.defaultSell) + '"></td>' +
+      '<td><input type="text" class="mr-supplier" value="' + escapeAttr(m.supplier || "") + '"></td>' +
+      "<td>" + escapeHtml((m.lastUpdated || "").slice(0, 10)) + "</td>" +
+      '<td class="pb-actions"></td>';
+    var actions = tr.querySelector(".pb-actions");
+    var saveBtn = document.createElement("button");
+    saveBtn.className = "btn btn-orange btn-sm"; saveBtn.textContent = "Save";
+    saveBtn.addEventListener("click", function () {
+      var updated = {
+        category: tr.querySelector(".mr-cat").value.trim(),
+        itemName: tr.querySelector(".mr-item").value.trim(),
+        brand: tr.querySelector(".mr-brand").value.trim(),
+        modelOrSize: tr.querySelector(".mr-model").value.trim(),
+        unit: tr.querySelector(".mr-unit").value.trim(),
+        cost: tr.querySelector(".mr-cost").value === "" ? null : +tr.querySelector(".mr-cost").value,
+        defaultSell: tr.querySelector(".mr-sell").value === "" ? null : +tr.querySelector(".mr-sell").value,
+        supplier: tr.querySelector(".mr-supplier").value.trim()
+      };
+      if (!updated.itemName) { toast("Item name is required"); return; }
+      confirmDialog('Save changes to "' + updated.itemName + '"?').then(function (ok) {
+        if (!ok) return;
+        API.put("/api/pricebook/materials/" + m.id, updated).then(function () {
+          toast("Updated"); reloadPbMaterials();
+        }).catch(function () { toast("Could not update"); });
+      });
+    });
+    actions.appendChild(saveBtn);
+    var cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn-ghost btn-sm"; cancelBtn.textContent = "Cancel"; cancelBtn.style.marginLeft = "6px";
+    cancelBtn.addEventListener("click", function () { tr.replaceWith(buildMaterialViewRow(m, isAdmin)); });
+    actions.appendChild(cancelBtn);
+    return tr;
   }
 
   function renderPbMaterials(rows) {
     var body = document.getElementById("pbMaterialsBody");
     body.innerHTML = "";
     var isAdmin = CURRENT_USER_ROLE === "admin";
-    rows.forEach(function (m) {
-      var tr = document.createElement("tr");
-      tr.innerHTML =
-        "<td>" + escapeHtml(m.category || "—") + "</td><td>" + escapeHtml(m.itemName) + "</td>" +
-        "<td>" + escapeHtml(m.brand || "—") + "</td><td>" + escapeHtml(m.modelOrSize || "—") + "</td>" +
-        "<td>" + escapeHtml(m.unit || "—") + "</td>" +
-        '<td class="num">' + (m.cost == null ? "—" : fmt(m.cost)) + "</td>" +
-        '<td class="num">' + (m.defaultSell == null ? "—" : fmt(m.defaultSell)) + "</td>" +
-        "<td>" + escapeHtml(m.supplier || "—") + "</td>" +
-        "<td>" + escapeHtml((m.lastUpdated || "").slice(0, 10)) + "</td>" +
-        '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
-      if (isAdmin) {
-        var editBtn = document.createElement("button");
-        editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
-        editBtn.addEventListener("click", function () {
-          var newCost = prompt("Cost (AED)", m.cost == null ? "" : m.cost);
-          if (newCost === null) return;
-          var newSell = prompt("Default Sell (AED)", m.defaultSell == null ? "" : m.defaultSell);
-          if (newSell === null) return;
-          API.put("/api/pricebook/materials/" + m.id, { cost: newCost === "" ? null : +newCost, defaultSell: newSell === "" ? null : +newSell })
-            .then(function () { toast("Updated"); reloadPbMaterials(); })
-            .catch(function () { toast("Could not update"); });
-        });
-        tr.querySelector(".pb-actions").appendChild(editBtn);
-      }
-      body.appendChild(tr);
+    rows.forEach(function (m) { body.appendChild(buildMaterialViewRow(m, isAdmin)); });
+  }
+
+  function buildLabourViewRow(l, isAdmin) {
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + escapeHtml(l.roleName) + "</td><td>" + escapeHtml(l.labourType || "—") + "</td>" +
+      '<td class="num">' + (l.cost == null ? "—" : fmt(l.cost)) + "</td>" +
+      '<td class="num">' + (l.defaultSell == null ? "—" : fmt(l.defaultSell)) + "</td>" +
+      "<td>" + escapeHtml(l.unit || "—") + "</td>" +
+      "<td>" + escapeHtml((l.lastUpdated || "").slice(0, 10)) + "</td>" +
+      '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
+    if (isAdmin) {
+      var editBtn = document.createElement("button");
+      editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", function () { tr.replaceWith(buildLabourEditRow(l, isAdmin)); });
+      tr.querySelector(".pb-actions").appendChild(editBtn);
+    }
+    return tr;
+  }
+
+  function buildLabourEditRow(l, isAdmin) {
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td><input type="text" class="lr-role" value="' + escapeAttr(l.roleName || "") + '"></td>' +
+      '<td><select class="lr-type"><option value="staff"' + (l.labourType === "staff" ? " selected" : "") + '>staff</option><option value="outside"' + (l.labourType === "outside" ? " selected" : "") + '>outside</option></select></td>' +
+      '<td><input type="number" class="lr-cost" value="' + (l.cost == null ? "" : l.cost) + '"></td>' +
+      '<td><input type="number" class="lr-sell" value="' + (l.defaultSell == null ? "" : l.defaultSell) + '"></td>' +
+      '<td><input type="text" class="lr-unit" value="' + escapeAttr(l.unit || "") + '"></td>' +
+      "<td>" + escapeHtml((l.lastUpdated || "").slice(0, 10)) + "</td>" +
+      '<td class="pb-actions"></td>';
+    var actions = tr.querySelector(".pb-actions");
+    var saveBtn = document.createElement("button");
+    saveBtn.className = "btn btn-orange btn-sm"; saveBtn.textContent = "Save";
+    saveBtn.addEventListener("click", function () {
+      var updated = {
+        roleName: tr.querySelector(".lr-role").value.trim(),
+        labourType: tr.querySelector(".lr-type").value,
+        cost: tr.querySelector(".lr-cost").value === "" ? null : +tr.querySelector(".lr-cost").value,
+        defaultSell: tr.querySelector(".lr-sell").value === "" ? null : +tr.querySelector(".lr-sell").value,
+        unit: tr.querySelector(".lr-unit").value.trim()
+      };
+      if (!updated.roleName) { toast("Role name is required"); return; }
+      confirmDialog('Save changes to "' + updated.roleName + '"?').then(function (ok) {
+        if (!ok) return;
+        API.put("/api/pricebook/labour/" + l.id, updated).then(function () {
+          toast("Updated"); reloadPbLabour();
+        }).catch(function () { toast("Could not update"); });
+      });
     });
+    actions.appendChild(saveBtn);
+    var cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn-ghost btn-sm"; cancelBtn.textContent = "Cancel"; cancelBtn.style.marginLeft = "6px";
+    cancelBtn.addEventListener("click", function () { tr.replaceWith(buildLabourViewRow(l, isAdmin)); });
+    actions.appendChild(cancelBtn);
+    return tr;
   }
 
   function renderPbLabour(rows) {
     var body = document.getElementById("pbLabourBody");
     body.innerHTML = "";
     var isAdmin = CURRENT_USER_ROLE === "admin";
-    rows.forEach(function (l) {
-      var tr = document.createElement("tr");
-      tr.innerHTML =
-        "<td>" + escapeHtml(l.roleName) + "</td><td>" + escapeHtml(l.labourType || "—") + "</td>" +
-        '<td class="num">' + (l.cost == null ? "—" : fmt(l.cost)) + "</td>" +
-        '<td class="num">' + (l.defaultSell == null ? "—" : fmt(l.defaultSell)) + "</td>" +
-        "<td>" + escapeHtml(l.unit || "—") + "</td>" +
-        "<td>" + escapeHtml((l.lastUpdated || "").slice(0, 10)) + "</td>" +
-        '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
-      if (isAdmin) {
-        var editBtn = document.createElement("button");
-        editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
-        editBtn.addEventListener("click", function () {
-          var newCost = prompt("Cost (AED)", l.cost == null ? "" : l.cost);
-          if (newCost === null) return;
-          var newSell = prompt("Default Sell (AED)", l.defaultSell == null ? "" : l.defaultSell);
-          if (newSell === null) return;
-          API.put("/api/pricebook/labour/" + l.id, { cost: newCost === "" ? null : +newCost, defaultSell: newSell === "" ? null : +newSell })
-            .then(function () { toast("Updated"); reloadPbLabour(); })
-            .catch(function () { toast("Could not update"); });
-        });
-        tr.querySelector(".pb-actions").appendChild(editBtn);
-      }
-      body.appendChild(tr);
+    rows.forEach(function (l) { body.appendChild(buildLabourViewRow(l, isAdmin)); });
+  }
+
+  function buildFixedViewRow(f, isAdmin) {
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + escapeHtml(f.category || "—") + "</td><td>" + escapeHtml(f.serviceName) + "</td>" +
+      '<td class="num">' + (f.estimatedCost == null ? "—" : fmt(f.estimatedCost)) + "</td>" +
+      '<td class="num">' + (f.standardSell == null ? "—" : fmt(f.standardSell)) + "</td>" +
+      "<td>" + escapeHtml((f.lastUpdated || "").slice(0, 10)) + "</td>" +
+      '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
+    if (isAdmin) {
+      var editBtn = document.createElement("button");
+      editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", function () { tr.replaceWith(buildFixedEditRow(f, isAdmin)); });
+      tr.querySelector(".pb-actions").appendChild(editBtn);
+    }
+    return tr;
+  }
+
+  function buildFixedEditRow(f, isAdmin) {
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td><input type="text" class="fr-cat" value="' + escapeAttr(f.category || "") + '"></td>' +
+      '<td><input type="text" class="fr-service" value="' + escapeAttr(f.serviceName || "") + '"></td>' +
+      '<td><input type="number" class="fr-cost" value="' + (f.estimatedCost == null ? "" : f.estimatedCost) + '"></td>' +
+      '<td><input type="number" class="fr-sell" value="' + (f.standardSell == null ? "" : f.standardSell) + '"></td>' +
+      "<td>" + escapeHtml((f.lastUpdated || "").slice(0, 10)) + "</td>" +
+      '<td class="pb-actions"></td>';
+    var actions = tr.querySelector(".pb-actions");
+    var saveBtn = document.createElement("button");
+    saveBtn.className = "btn btn-orange btn-sm"; saveBtn.textContent = "Save";
+    saveBtn.addEventListener("click", function () {
+      var updated = {
+        category: tr.querySelector(".fr-cat").value.trim(),
+        serviceName: tr.querySelector(".fr-service").value.trim(),
+        estimatedCost: tr.querySelector(".fr-cost").value === "" ? null : +tr.querySelector(".fr-cost").value,
+        standardSell: tr.querySelector(".fr-sell").value === "" ? null : +tr.querySelector(".fr-sell").value
+      };
+      if (!updated.serviceName) { toast("Service name is required"); return; }
+      confirmDialog('Save changes to "' + updated.serviceName + '"?').then(function (ok) {
+        if (!ok) return;
+        API.put("/api/pricebook/fixed-services/" + f.id, updated).then(function () {
+          toast("Updated"); reloadPbFixed();
+        }).catch(function () { toast("Could not update"); });
+      });
     });
+    actions.appendChild(saveBtn);
+    var cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn-ghost btn-sm"; cancelBtn.textContent = "Cancel"; cancelBtn.style.marginLeft = "6px";
+    cancelBtn.addEventListener("click", function () { tr.replaceWith(buildFixedViewRow(f, isAdmin)); });
+    actions.appendChild(cancelBtn);
+    return tr;
   }
 
   function renderPbFixed(rows) {
     var body = document.getElementById("pbFixedBody");
     body.innerHTML = "";
     var isAdmin = CURRENT_USER_ROLE === "admin";
-    rows.forEach(function (f) {
-      var tr = document.createElement("tr");
-      tr.innerHTML =
-        "<td>" + escapeHtml(f.category || "—") + "</td><td>" + escapeHtml(f.serviceName) + "</td>" +
-        '<td class="num">' + (f.estimatedCost == null ? "—" : fmt(f.estimatedCost)) + "</td>" +
-        '<td class="num">' + (f.standardSell == null ? "—" : fmt(f.standardSell)) + "</td>" +
-        "<td>" + escapeHtml((f.lastUpdated || "").slice(0, 10)) + "</td>" +
-        '<td class="pb-actions admin-only" style="' + (isAdmin ? "" : "display:none") + '"></td>';
-      if (isAdmin) {
-        var editBtn = document.createElement("button");
-        editBtn.className = "btn btn-ghost btn-sm"; editBtn.textContent = "Edit";
-        editBtn.addEventListener("click", function () {
-          var newCost = prompt("Estimated Cost (AED)", f.estimatedCost == null ? "" : f.estimatedCost);
-          if (newCost === null) return;
-          var newSell = prompt("Standard Sell (AED)", f.standardSell == null ? "" : f.standardSell);
-          if (newSell === null) return;
-          API.put("/api/pricebook/fixed-services/" + f.id, { estimatedCost: newCost === "" ? null : +newCost, standardSell: newSell === "" ? null : +newSell })
-            .then(function () { toast("Updated"); reloadPbFixed(); })
-            .catch(function () { toast("Could not update"); });
-        });
-        tr.querySelector(".pb-actions").appendChild(editBtn);
-      }
-      body.appendChild(tr);
-    });
+    rows.forEach(function (f) { body.appendChild(buildFixedViewRow(f, isAdmin)); });
   }
 
   function renderPbSupplierPills() {
