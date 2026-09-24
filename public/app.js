@@ -238,6 +238,8 @@
     }
     if (document.getElementById("tab-amc-proposals").style.display !== "none") {
       loadAmcProposalsAll();
+      apLoadCommRates();
+      apLoadHighlights();
     }
   }
 
@@ -3073,6 +3075,7 @@
       apFillUnits("apPropType", "apAcUnits", false);
       apFillUnits("acPropType", "acAcUnits", false);
       apLoadCommRates();
+      apLoadHighlights();
       acUpdateValueHint();
     }).catch(function () {});
   }
@@ -3148,17 +3151,72 @@
     return { basic: 8, standard: 12 };
   }
 
+  // AP_HIGHLIGHTS is the team's admin-edited 3x5 bullet grid, loaded from
+  // the server (which itself falls back to the same default wording the
+  // PDF uses) - the wording lives in one place (the server), not duplicated
+  // here; only the {callouts} token substitution is mirrored client-side,
+  // same reasoning as apCalloutsFor above.
+  var AP_HIGHLIGHTS = null;
+
   function apCardHighlights(propertyType) {
     var co = apCalloutsFor(propertyType);
-    var ct = [co.basic + " call-outs a year", co.standard + " call-outs a year", "Unlimited call-outs"];
-    return [
-      [["2 AC PPM visits per unit", false], [ct[0], false], ["2 plumbing + 2 electrical PPM visits", false],
-       ["Parts not included", true], ["No free handyman hours", true]],
-      [["3 AC PPM visits per unit", false], [ct[1], false], ["3 plumbing + 3 electrical PPM visits", false],
-       ["Parts covered up to AED 50 a visit", false], ["1 free handyman hour", false]],
-      [["4 AC PPM visits per unit", false], [ct[2], false], ["4 plumbing + 4 electrical PPM visits", false],
-       ["Parts covered up to AED 150 a visit", false], ["2 free handyman hours", false]]
-    ];
+    var sub = [String(co.basic), String(co.standard), null];
+    var template = AP_HIGHLIGHTS || [[], [], []];
+    return template.map(function (bullets, tierIdx) {
+      return bullets.map(function (b) {
+        var text = b.text || "";
+        if (sub[tierIdx] !== null) text = text.split("{callouts}").join(sub[tierIdx]);
+        return [text, !!b.off];
+      });
+    });
+  }
+
+  function apLoadHighlights() {
+    API.get("/api/amc-proposals/highlights?team=" + encodeURIComponent(ACTIVE_TEAM)).then(function (r) {
+      AP_HIGHLIGHTS = r.highlights;
+      apRenderHighlightsEditor();
+      apRenderPreview();
+    }).catch(function () {});
+  }
+
+  function apRenderHighlightsEditor() {
+    var wrap = document.getElementById("apHighlightsGrid");
+    if (!wrap || !AP_HIGHLIGHTS) return;
+    wrap.innerHTML = AP_META.tiers.map(function (tier, tierIdx) {
+      var rows = AP_HIGHLIGHTS[tierIdx].map(function (b, bulletIdx) {
+        return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">' +
+          '<input type="text" class="ap-hl-text" data-tier="' + tierIdx + '" data-bullet="' + bulletIdx + '" value="' + escapeAttr(b.text) + '" style="flex:1">' +
+          '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);white-space:nowrap;text-transform:none;font-weight:400;">' +
+            '<input type="checkbox" class="ap-hl-off" data-tier="' + tierIdx + '" data-bullet="' + bulletIdx + '"' + (b.off ? " checked" : "") + '> greyed out</label>' +
+        "</div>";
+      }).join("");
+      return '<div class="field"><label>' + escapeHtml(tier) + "</label>" + rows + "</div>";
+    }).join("");
+  }
+
+  function apReadHighlightsEditor() {
+    var grid = [[], [], []];
+    document.querySelectorAll("#apHighlightsGrid .ap-hl-text").forEach(function (input) {
+      var t = +input.dataset.tier, b = +input.dataset.bullet;
+      grid[t][b] = { text: input.value, off: false };
+    });
+    document.querySelectorAll("#apHighlightsGrid .ap-hl-off").forEach(function (cb) {
+      var t = +cb.dataset.tier, b = +cb.dataset.bullet;
+      if (grid[t][b]) grid[t][b].off = cb.checked;
+    });
+    return grid;
+  }
+
+  function apSaveHighlights() {
+    var highlights = apReadHighlightsEditor();
+    confirmDialog("Save this wording for " + TEAM_LABELS[ACTIVE_TEAM] + "? It applies to every future proposal.").then(function (ok) {
+      if (!ok) return;
+      API.put("/api/amc-proposals/highlights", { team: ACTIVE_TEAM, highlights: highlights }).then(function (r) {
+        AP_HIGHLIGHTS = r.highlights;
+        toast("Inclusions wording saved for " + TEAM_LABELS[ACTIVE_TEAM]);
+        apRenderPreview();
+      }).catch(function (err) { toast(err.message || "Could not save"); });
+    });
   }
 
   function apRenderPreview() {
@@ -3472,6 +3530,7 @@
       document.getElementById(id).addEventListener("change", apRenderPreview);
     });
     document.getElementById("apBtnSaveRates").addEventListener("click", apSaveCommRates);
+    document.getElementById("apBtnSaveHighlights").addEventListener("click", apSaveHighlights);
     document.getElementById("apBtnGenerate").addEventListener("click", apGenerateProposal);
     document.getElementById("apPreviewCards").addEventListener("click", function (e) {
       var btn = e.target.closest("[data-create-contract]");

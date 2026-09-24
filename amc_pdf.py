@@ -255,11 +255,12 @@ def _data_table(styles, header, rows, prem_col=None, rowhead_col=0, col_widths=N
 # Proposal PDF
 # ---------------------------------------------------------------------------
 
-def _package_card(styles, tier_idx, tier_name, tag, annual, is_custom, property_type):
+def _package_card(styles, tier_idx, tier_name, tag, annual, is_custom, property_type, highlights=None):
     flagged = tier_idx == 1
     per_day = annual / 365.0
     plan = ap.monthly_plan(annual)
-    highlights = ap.card_highlights(property_type)[tier_idx]
+    if highlights is None:
+        highlights = ap.card_highlights(property_type)[tier_idx]
 
     head_bg = ORANGE if flagged else NAVY
     tag_text = "Best value" if flagged else tag
@@ -353,7 +354,8 @@ def _highlight_box(styles, html, bold_prefix=None):
 def generate_proposal_pdf(data):
     """data: clientName, propertyAddress, propertyType, acUnits, validityDays,
     createdDate (date), validUntil (date), prices [basic,standard,premium],
-    isCustom (bool)."""
+    isCustom (bool), highlightsTemplate (optional admin-edited 3x5 grid,
+    see amc_proposal_highlights in server.py - None uses the default copy)."""
     styles = _styles()
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=MARGIN, bottomMargin=MARGIN + 6 * mm,
@@ -380,7 +382,9 @@ def generate_proposal_pdf(data):
     ]))
     story.append(Spacer(1, 14))
 
-    cards = [_package_card(styles, i, ap.TIERS[i], ap.TAGS[i], prices[i], data.get("isCustom"), property_type)
+    highlights_grid = ap.card_highlights(property_type, data.get("highlightsTemplate"))
+    cards = [_package_card(styles, i, ap.TIERS[i], ap.TAGS[i], prices[i], data.get("isCustom"), property_type,
+                           highlights=highlights_grid[i])
              for i in range(3)]
     gutter = 4 * mm
     card_w = (CONTENT_W - 2 * gutter) / 3

@@ -136,17 +136,41 @@ def always_included(property_type):
     return base
 
 
-def card_highlights(property_type):
+# The editable default for card_highlights() below - an admin can override
+# this per team (see amc_proposal_highlights in server.py), in which case
+# their saved 3x5 grid is passed in as `template` instead. Every bullet may
+# contain the literal token "{callouts}", substituted with this property
+# type's real call-out count at render time - keeps edited wording from
+# drifting out of sync with the real numbers, which vary by property type
+# even though the wording usually doesn't.
+DEFAULT_HIGHLIGHTS = [
+    [{"text": "2 AC PPM visits per unit", "off": False}, {"text": "{callouts} call-outs a year", "off": False},
+     {"text": "2 plumbing + 2 electrical PPM visits", "off": False},
+     {"text": "Parts not included", "off": True}, {"text": "No free handyman hours", "off": True}],
+    [{"text": "3 AC PPM visits per unit", "off": False}, {"text": "{callouts} call-outs a year", "off": False},
+     {"text": "3 plumbing + 3 electrical PPM visits", "off": False},
+     {"text": "Parts covered up to AED 50 a visit", "off": False}, {"text": "1 free handyman hour", "off": False}],
+    [{"text": "4 AC PPM visits per unit", "off": False}, {"text": "Unlimited call-outs", "off": False},
+     {"text": "4 plumbing + 4 electrical PPM visits", "off": False},
+     {"text": "Parts covered up to AED 150 a visit", "off": False}, {"text": "2 free handyman hours", "off": False}],
+]
+
+
+def card_highlights(property_type, template=None):
+    if not template:
+        template = DEFAULT_HIGHLIGHTS
     co = callouts_for(property_type)
-    ct = ("%d call-outs a year" % co["basic"], "%d call-outs a year" % co["standard"], "Unlimited call-outs")
-    return [
-        [("2 AC PPM visits per unit", False), (ct[0], False), ("2 plumbing + 2 electrical PPM visits", False),
-         ("Parts not included", True), ("No free handyman hours", True)],
-        [("3 AC PPM visits per unit", False), (ct[1], False), ("3 plumbing + 3 electrical PPM visits", False),
-         ("Parts covered up to AED 50 a visit", False), ("1 free handyman hour", False)],
-        [("4 AC PPM visits per unit", False), (ct[2], False), ("4 plumbing + 4 electrical PPM visits", False),
-         ("Parts covered up to AED 150 a visit", False), ("2 free handyman hours", False)],
-    ]
+    sub = (str(co["basic"]), str(co["standard"]), None)
+    result = []
+    for tier_idx, bullets in enumerate(template):
+        row = []
+        for b in bullets:
+            text = b.get("text") or ""
+            if sub[tier_idx] is not None:
+                text = text.replace("{callouts}", sub[tier_idx])
+            row.append((text, bool(b.get("off"))))
+        result.append(row)
+    return result
 
 
 def package_inclusions_table(property_type):

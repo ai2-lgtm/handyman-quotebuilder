@@ -660,6 +660,11 @@ def init_db():
             premium_base DOUBLE PRECISION NOT NULL, premium_per DOUBLE PRECISION NOT NULL,
             updated_at TEXT, updated_by_email TEXT
         );
+        CREATE TABLE IF NOT EXISTS amc_proposal_highlights (
+            team TEXT PRIMARY KEY CHECK(team IN ('dubai','magcity')),
+            highlights_json TEXT NOT NULL,
+            updated_at TEXT, updated_by_email TEXT
+        );
         CREATE TABLE IF NOT EXISTS amc_proposals (
             id TEXT PRIMARY KEY,
             team TEXT NOT NULL DEFAULT 'dubai' CHECK(team IN ('dubai','magcity')),
@@ -2513,6 +2518,50 @@ def update_amc_commercial_rates(body, actor_email):
     return amc_commercial_rates_response({"team": team})
 
 
+def get_proposal_highlights_template(team):
+    """The admin-edited 3x5 bullet grid for this team, or None if nothing's
+    been saved yet - callers fall back to amc_proposal.DEFAULT_HIGHLIGHTS."""
+    conn = get_conn()
+    row = conn.execute("SELECT highlights_json FROM amc_proposal_highlights WHERE team=?", (team,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return json.loads(row["highlights_json"])
+
+
+def amc_proposal_highlights_response(query):
+    team = query.get("team") or "dubai"
+    template = get_proposal_highlights_template(team) or amc_proposal.DEFAULT_HIGHLIGHTS
+    return json_response(200, {"team": team, "highlights": template})
+
+
+def update_amc_proposal_highlights(body, actor_email):
+    team = body.get("team") or "dubai"
+    if team not in ("dubai", "magcity"):
+        return json_response(400, {"error": "team must be 'dubai' or 'magcity'"})
+    highlights = body.get("highlights")
+    if not isinstance(highlights, list) or len(highlights) != 3 or any(len(tier) != 5 for tier in highlights):
+        return json_response(400, {"error": "highlights must be 3 tiers of exactly 5 bullets each"})
+    cleaned = []
+    for tier in highlights:
+        row = []
+        for b in tier:
+            if not isinstance(b, dict) or not isinstance(b.get("text"), str):
+                return json_response(400, {"error": "each bullet needs a text string"})
+            row.append({"text": b["text"], "off": bool(b.get("off"))})
+        cleaned.append(row)
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO amc_proposal_highlights (team, highlights_json, updated_at, updated_by_email) VALUES (?,?,?,?) "
+        "ON CONFLICT(team) DO UPDATE SET highlights_json=excluded.highlights_json, "
+        "updated_at=excluded.updated_at, updated_by_email=excluded.updated_by_email",
+        (team, json.dumps(cleaned), now_iso(), actor_email),
+    )
+    conn.commit()
+    conn.close()
+    return json_response(200, {"team": team, "highlights": cleaned})
+
+
 def amc_proposal_to_dict(r):
     return {
         "id": r["id"], "team": r["team"], "clientName": r["client_name"],
@@ -2580,6 +2629,7 @@ def create_amc_proposal(body, actor_email):
         "clientName": client_name, "propertyAddress": property_address, "propertyType": property_type,
         "acUnits": ac_units, "createdDate": today, "validUntil": valid_until, "prices": prices,
         "isCustom": override is not None,
+        "highlightsTemplate": get_proposal_highlights_template(team),
     })
 
     pid = uuid.uuid4().hex
@@ -3035,6 +3085,8 @@ def handle_get(environ, path, query):
             return amc_proposals_meta()
         if path == "/api/amc-proposals/commercial-rates":
             return amc_commercial_rates_response(query)
+        if path == "/api/amc-proposals/highlights":
+            return amc_proposal_highlights_response(query)
         if path == "/api/amc-proposals":
             return list_amc_proposals(query)
         m = re.match(r"^/api/amc-proposals/([\w-]+)/pdf$", path)
@@ -3204,6 +3256,11 @@ def handle_put(environ, path, body):
         if not is_admin(user):
             return forbidden()
         return update_amc_commercial_rates(body, user["email"])
+
+    if path == "/api/amc-proposals/highlights":
+        if not is_admin(user):
+            return forbidden()
+        return update_amc_proposal_highlights(body, user["email"])
 
     m = re.match(r"^/api/pricebook/contractors/([\w-]+)/pricing/(\d+)$", path)
     if m:
