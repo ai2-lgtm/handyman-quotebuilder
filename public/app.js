@@ -3275,6 +3275,36 @@
     apSwitchSubtab("contract");
   }
 
+  // "Edit" on a sent proposal never touches its stored PDF/record - it just
+  // pre-fills the Builder with that proposal's inputs so Generate creates a
+  // brand-new proposal (a revision), leaving the original untouched in the
+  // log. Proposal PDFs are an immutable record once issued (see the AMC
+  // Proposals & Contracts comment above) - this respects that instead of
+  // fighting it.
+  function apEditProposalFromLog(proposalId) {
+    var p = AP_PROPOSALS.filter(function (x) { return x.id === proposalId; })[0];
+    if (!p) return;
+    document.getElementById("apClientName").value = p.clientName === "(no name)" ? "" : (p.clientName || "");
+    document.getElementById("apPropAddr").value = p.propertyAddress || "";
+    document.getElementById("apPropType").value = p.propertyType;
+    apFillUnits("apPropType", "apAcUnits", false);
+    var unitsSel = document.getElementById("apAcUnits");
+    if ([].slice.call(unitsSel.options).some(function (o) { return o.value === String(p.acUnits); })) {
+      unitsSel.value = String(p.acUnits);
+    }
+    var validitySel = document.getElementById("apValidity");
+    if ([].slice.call(validitySel.options).some(function (o) { return o.value === String(p.validityDays); })) {
+      validitySel.value = String(p.validityDays);
+    }
+    document.getElementById("apOverrideBasic").value = p.isCustom && p.override.basic != null ? p.override.basic : "";
+    document.getElementById("apOverrideStandard").value = p.isCustom && p.override.standard != null ? p.override.standard : "";
+    document.getElementById("apOverridePremium").value = p.isCustom && p.override.premium != null ? p.override.premium : "";
+    apUpdateCommCardVisibility();
+    apRenderPreview();
+    apSwitchSubtab("builder");
+    toast("Loaded - Generate creates a new proposal, the original stays as-is");
+  }
+
   // The picker (Basic/Standard/Premium, each priced for the current property
   // type + AC units) is the actual UI for choosing a package - the hidden
   // #acPackage select is just where that choice is stored, so acGenerateContract()
@@ -3397,6 +3427,7 @@
         "<td>" + escapeHtml(p.createdByEmail || "") + "</td>" +
         '<td style="white-space:nowrap">' +
           '<button class="btn ghost btn-sm" data-dl-proposal="' + p.id + '">Download</button> ' +
+          '<button class="btn ghost btn-sm" data-edit-proposal="' + p.id + '">Edit</button> ' +
           (p.convertedToContractId ? "" : '<button class="btn ghost btn-sm" data-cc-proposal="' + p.id + '">&rarr; Contract</button>') +
         "</td></tr>";
     }).join("") || '<tr><td colspan="11" class="hint">No proposals sent yet.</td></tr>';
@@ -3460,6 +3491,8 @@
     document.getElementById("apProposalLogBody").addEventListener("click", function (e) {
       var dl = e.target.closest("[data-dl-proposal]");
       if (dl) { window.open("/api/amc-proposals/" + dl.dataset.dlProposal + "/pdf", "_blank"); return; }
+      var ed = e.target.closest("[data-edit-proposal]");
+      if (ed) { apEditProposalFromLog(ed.dataset.editProposal); return; }
       var cc = e.target.closest("[data-cc-proposal]");
       if (cc) apCreateContractFromLog(cc.dataset.ccProposal);
     });
