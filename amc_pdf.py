@@ -554,7 +554,8 @@ def generate_contract_pdf(data):
     """data: clientName, propertyAddress, propertyType, acUnits, package
     ("Basic"/"Standard"/"Premium"), payPlan ("onetime"/"monthly"), startDate
     (date), signatory ("tegan"/"kristofer"/"govind"), contractDate (date),
-    commercialRates (dict or None)."""
+    commercialRates (dict or None), savedPrices (dict or None - see
+    amc_proposal_prices in server.py)."""
     styles = _styles()
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=MARGIN, bottomMargin=MARGIN + 6 * mm,
@@ -574,7 +575,8 @@ def generate_contract_pdf(data):
     date_str = fmt_date(contract_date)
     start_str = fmt_date(start_date)
 
-    row = ap.contract_price_for(property_type, units, commercial_rates=data.get("commercialRates"))
+    row = ap.contract_price_for(property_type, units, commercial_rates=data.get("commercialRates"),
+                                 saved_prices=data.get("savedPrices"))
     annual = row[tier_idx]
     plan = ap.monthly_plan(annual)
     co = ap.callouts_for(property_type)

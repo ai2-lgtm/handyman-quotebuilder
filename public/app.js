@@ -240,6 +240,7 @@
       loadAmcProposalsAll();
       apLoadCommRates();
       apLoadHighlights();
+      apLoadSavedPrice();
     }
   }
 
@@ -3076,6 +3077,7 @@
       apFillUnits("acPropType", "acAcUnits", false);
       apLoadCommRates();
       apLoadHighlights();
+      apLoadSavedPrice();
       acUpdateValueHint();
     }).catch(function () {});
   }
@@ -3113,14 +3115,84 @@
     card.style.display = (isCommercial && CURRENT_USER_ROLE === "admin") ? "" : "none";
   }
 
+  // Cache of admin-saved apartment/villa prices, keyed "type|units" ->
+  // {basic,standard,premium} or null (confirmed nothing saved) - a real
+  // cache rather than one global value, because Proposal Builder
+  // (apPropType/apAcUnits) and Contract Builder (acPropType/acAcUnits) are
+  // two independent forms that can each be set to a different property
+  // type/units combo, and apPriceFor() needs the right entry for whichever
+  // combo it's actually asked about. Unlike the Override boxes (one
+  // proposal only), a saved price replaces the team's real default, so
+  // both new proposals AND contracts for that combo use it.
+  var AP_SAVED_PRICE_CACHE = {};
+
+  function apSavedPriceKey(type, units) { return type + "|" + units; }
+
+  function apLoadSavedPriceFor(type, units) {
+    if (type === "commercial" || !units) return Promise.resolve(null);
+    return API.get("/api/amc-proposals/prices?team=" + encodeURIComponent(ACTIVE_TEAM) + "&propertyType=" + type + "&units=" + units).then(function (r) {
+      AP_SAVED_PRICE_CACHE[apSavedPriceKey(type, units)] = r.saved;
+      return r.saved;
+    }).catch(function () {
+      AP_SAVED_PRICE_CACHE[apSavedPriceKey(type, units)] = null;
+      return null;
+    });
+  }
+
+  function apLoadSavedPrice() {
+    var type = document.getElementById("apPropType").value;
+    var units = parseInt(document.getElementById("apAcUnits").value, 10);
+    apUpdateSavedPriceVisibility();
+    apLoadSavedPriceFor(type, units).then(function () { apRenderPreview(); });
+  }
+
+  function apUpdateSavedPriceVisibility() {
+    var btn = document.getElementById("apBtnSaveStandardPrice");
+    if (!btn) return;
+    var isCommercial = document.getElementById("apPropType").value === "commercial";
+    btn.style.display = (isCommercial || CURRENT_USER_ROLE !== "admin") ? "none" : "";
+  }
+
+  function apSaveStandardPrice() {
+    var type = document.getElementById("apPropType").value;
+    var units = parseInt(document.getElementById("apAcUnits").value, 10);
+    if (type === "commercial" || !units) return;
+    var current = apPriceFor(type, units, apReadOverride());
+    var label = TEAM_LABELS[ACTIVE_TEAM] + " " + AP_META.typeLabel[type] + " (" + units + " unit" + (units === 1 ? "" : "s") + ")";
+    confirmDialog(
+      "Save AED " + Math.round(current[0]).toLocaleString() + " / " + Math.round(current[1]).toLocaleString() + " / " +
+      Math.round(current[2]).toLocaleString() + " as the new standard Basic/Standard/Premium price for " + label +
+      "? This replaces the default for every future proposal and contract - not just this one."
+    ).then(function (ok) {
+      if (!ok) return;
+      API.put("/api/amc-proposals/prices", {
+        team: ACTIVE_TEAM, propertyType: type, units: units,
+        basic: current[0], standard: current[1], premium: current[2]
+      }).then(function (r) {
+        AP_SAVED_PRICE_CACHE[apSavedPriceKey(type, units)] = r.saved;
+        document.getElementById("apOverrideBasic").value = "";
+        document.getElementById("apOverrideStandard").value = "";
+        document.getElementById("apOverridePremium").value = "";
+        toast("Saved as the new standard price for " + TEAM_LABELS[ACTIVE_TEAM]);
+        apRenderPreview();
+        acUpdateValueHint();
+      }).catch(function (err) { toast(err.message || "Could not save price"); });
+    });
+  }
+
   function apPriceFor(type, units, override) {
     var row;
     if (type === "commercial") {
       var r = AP_COMM_RATES || AP_META.commercialDefaults;
       row = ["basic", "standard", "premium"].map(function (t) { return Math.round(r[t].base + r[t].per * units); });
     } else {
-      var table = type === "apartment" ? AP_META.apartmentPrices : AP_META.villaPrices;
-      row = (table[String(units)] || [0, 0, 0]).slice();
+      var saved = AP_SAVED_PRICE_CACHE[apSavedPriceKey(type, units)];
+      if (saved) {
+        row = [saved.basic, saved.standard, saved.premium];
+      } else {
+        var table = type === "apartment" ? AP_META.apartmentPrices : AP_META.villaPrices;
+        row = (table[String(units)] || [0, 0, 0]).slice();
+      }
     }
     if (override) {
       row = row.map(function (v, i) { return (override[i] != null) ? override[i] : v; });
@@ -3524,13 +3596,19 @@
       apFillUnits("apPropType", "apAcUnits", false);
       apUpdateCommCardVisibility();
       apRenderPreview();
+      apLoadSavedPrice();
     });
-    ["apAcUnits", "apOverrideBasic", "apOverrideStandard", "apOverridePremium"].forEach(function (id) {
+    document.getElementById("apAcUnits").addEventListener("change", function () {
+      apRenderPreview();
+      apLoadSavedPrice();
+    });
+    ["apOverrideBasic", "apOverrideStandard", "apOverridePremium"].forEach(function (id) {
       document.getElementById(id).addEventListener("input", apRenderPreview);
       document.getElementById(id).addEventListener("change", apRenderPreview);
     });
     document.getElementById("apBtnSaveRates").addEventListener("click", apSaveCommRates);
     document.getElementById("apBtnSaveHighlights").addEventListener("click", apSaveHighlights);
+    document.getElementById("apBtnSaveStandardPrice").addEventListener("click", apSaveStandardPrice);
     document.getElementById("apBtnGenerate").addEventListener("click", apGenerateProposal);
     document.getElementById("apPreviewCards").addEventListener("click", function (e) {
       var btn = e.target.closest("[data-create-contract]");
@@ -3540,8 +3618,13 @@
     document.getElementById("acPropType").addEventListener("change", function () {
       apFillUnits("acPropType", "acAcUnits", false);
       acUpdateValueHint();
+      apLoadSavedPriceFor(document.getElementById("acPropType").value, parseInt(document.getElementById("acAcUnits").value, 10)).then(acUpdateValueHint);
     });
-    ["acAcUnits", "acPackage", "acPayPlan"].forEach(function (id) {
+    document.getElementById("acAcUnits").addEventListener("change", function () {
+      acUpdateValueHint();
+      apLoadSavedPriceFor(document.getElementById("acPropType").value, parseInt(document.getElementById("acAcUnits").value, 10)).then(acUpdateValueHint);
+    });
+    ["acPackage", "acPayPlan"].forEach(function (id) {
       document.getElementById(id).addEventListener("change", acUpdateValueHint);
     });
     document.getElementById("acBtnGenerate").addEventListener("click", acGenerateContract);

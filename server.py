@@ -665,6 +665,16 @@ def init_db():
             highlights_json TEXT NOT NULL,
             updated_at TEXT, updated_by_email TEXT
         );
+        CREATE TABLE IF NOT EXISTS amc_proposal_prices (
+            team TEXT NOT NULL CHECK(team IN ('dubai','magcity')),
+            property_type TEXT NOT NULL CHECK(property_type IN ('apartment','villa')),
+            units INTEGER NOT NULL,
+            basic DOUBLE PRECISION NOT NULL,
+            standard DOUBLE PRECISION NOT NULL,
+            premium DOUBLE PRECISION NOT NULL,
+            updated_at TEXT, updated_by_email TEXT,
+            PRIMARY KEY (team, property_type, units)
+        );
         CREATE TABLE IF NOT EXISTS amc_proposals (
             id TEXT PRIMARY KEY,
             team TEXT NOT NULL DEFAULT 'dubai' CHECK(team IN ('dubai','magcity')),
@@ -2562,6 +2572,66 @@ def update_amc_proposal_highlights(body, actor_email):
     return json_response(200, {"team": team, "highlights": cleaned})
 
 
+def get_saved_proposal_price(team, property_type, units):
+    """An admin-saved replacement for this team's default apartment/villa
+    price at this unit count, or None if nothing's been saved (callers then
+    fall back to amc_proposal.APARTMENT_PRICES/VILLA_PRICES). Commercial has
+    its own separate mechanism (amc_commercial_rates) - never call this for
+    property_type == 'commercial'."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT basic, standard, premium FROM amc_proposal_prices WHERE team=? AND property_type=? AND units=?",
+        (team, property_type, units),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"basic": row["basic"], "standard": row["standard"], "premium": row["premium"]}
+
+
+def amc_proposal_prices_response(query):
+    team = query.get("team") or "dubai"
+    property_type = query.get("propertyType")
+    try:
+        units = int(query.get("units"))
+    except (TypeError, ValueError):
+        return json_response(400, {"error": "units must be an integer"})
+    if property_type not in ("apartment", "villa"):
+        return json_response(400, {"error": "propertyType must be 'apartment' or 'villa' - commercial uses /amc-proposals/commercial-rates"})
+    saved = get_saved_proposal_price(team, property_type, units)
+    default_row = (amc_proposal.APARTMENT_PRICES if property_type == "apartment" else amc_proposal.VILLA_PRICES).get(units)
+    default = {"basic": default_row[0], "standard": default_row[1], "premium": default_row[2]} if default_row else None
+    return json_response(200, {
+        "team": team, "propertyType": property_type, "units": units,
+        "saved": saved, "default": default, "isCustom": saved is not None,
+    })
+
+
+def update_amc_proposal_price(body, actor_email):
+    team = body.get("team") or "dubai"
+    if team not in ("dubai", "magcity"):
+        return json_response(400, {"error": "team must be 'dubai' or 'magcity'"})
+    property_type = body.get("propertyType")
+    if property_type not in ("apartment", "villa"):
+        return json_response(400, {"error": "propertyType must be 'apartment' or 'villa'"})
+    try:
+        units = int(body.get("units"))
+        basic, standard, premium = float(body.get("basic")), float(body.get("standard")), float(body.get("premium"))
+    except (TypeError, ValueError):
+        return json_response(400, {"error": "units, basic, standard and premium are required numbers"})
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO amc_proposal_prices (team, property_type, units, basic, standard, premium, updated_at, updated_by_email) "
+        "VALUES (?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(team, property_type, units) DO UPDATE SET basic=excluded.basic, standard=excluded.standard, "
+        "premium=excluded.premium, updated_at=excluded.updated_at, updated_by_email=excluded.updated_by_email",
+        (team, property_type, units, basic, standard, premium, now_iso(), actor_email),
+    )
+    conn.commit()
+    conn.close()
+    return amc_proposal_prices_response({"team": team, "propertyType": property_type, "units": str(units)})
+
+
 def amc_proposal_to_dict(r):
     return {
         "id": r["id"], "team": r["team"], "clientName": r["client_name"],
@@ -2614,11 +2684,12 @@ def create_amc_proposal(body, actor_email):
         return json_response(400, {"error": "; ".join(errors)})
 
     commercial_rates = get_commercial_rates_dict(team) if property_type == "commercial" else None
+    saved_prices = get_saved_proposal_price(team, property_type, ac_units) if property_type != "commercial" else None
     ob, os_, op = (_num_or_none(body.get("overrideBasic")), _num_or_none(body.get("overrideStandard")),
                    _num_or_none(body.get("overridePremium")))
     override = (ob, os_, op) if any(v is not None for v in (ob, os_, op)) else None
     prices = amc_proposal.price_for(property_type, ac_units, commercial_rates=commercial_rates,
-                                     override=override)
+                                     override=override, saved_prices=saved_prices)
 
     today = date.today()
     valid_until = today + timedelta(days=validity_days)
@@ -2710,7 +2781,9 @@ def create_amc_contract(body, actor_email):
         return json_response(400, {"error": "startDate must be YYYY-MM-DD"})
 
     commercial_rates = get_commercial_rates_dict(team) if property_type == "commercial" else None
-    row = amc_proposal.contract_price_for(property_type, ac_units, commercial_rates=commercial_rates)
+    saved_prices = get_saved_proposal_price(team, property_type, ac_units) if property_type != "commercial" else None
+    row = amc_proposal.contract_price_for(property_type, ac_units, commercial_rates=commercial_rates,
+                                           saved_prices=saved_prices)
     tier_idx = amc_proposal.TIERS.index(body["package"])
     annual = row[tier_idx]
 
@@ -2722,6 +2795,7 @@ def create_amc_contract(body, actor_email):
         "clientName": client_name, "propertyAddress": property_address, "propertyType": property_type,
         "acUnits": ac_units, "package": body["package"], "payPlan": body["payPlan"], "startDate": start,
         "signatory": body["signatory"], "contractDate": today, "commercialRates": commercial_rates,
+        "savedPrices": saved_prices,
     })
 
     cid = uuid.uuid4().hex
@@ -3087,6 +3161,8 @@ def handle_get(environ, path, query):
             return amc_commercial_rates_response(query)
         if path == "/api/amc-proposals/highlights":
             return amc_proposal_highlights_response(query)
+        if path == "/api/amc-proposals/prices":
+            return amc_proposal_prices_response(query)
         if path == "/api/amc-proposals":
             return list_amc_proposals(query)
         m = re.match(r"^/api/amc-proposals/([\w-]+)/pdf$", path)
@@ -3261,6 +3337,11 @@ def handle_put(environ, path, body):
         if not is_admin(user):
             return forbidden()
         return update_amc_proposal_highlights(body, user["email"])
+
+    if path == "/api/amc-proposals/prices":
+        if not is_admin(user):
+            return forbidden()
+        return update_amc_proposal_price(body, user["email"])
 
     m = re.match(r"^/api/pricebook/contractors/([\w-]+)/pricing/(\d+)$", path)
     if m:

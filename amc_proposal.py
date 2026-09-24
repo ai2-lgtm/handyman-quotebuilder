@@ -68,14 +68,22 @@ HANDYMAN_VISITS_LABEL = ("Not included", "1x / year", "2x / year")
 VALIDITY_OPTIONS = (7, 14, 30)
 
 
-def price_for(property_type, units, commercial_rates=None, override=None):
+def price_for(property_type, units, commercial_rates=None, override=None, saved_prices=None):
     """override is a (basic, standard, premium) sequence of AED-or-None -
-    any non-None entry replaces that tier's price outright, exactly like the
-    original tool's per-proposal 'negotiated price' box. A contract should
-    never pass an override - see contract_price_for()."""
+    any non-None entry replaces that tier's price outright for THIS proposal
+    only, exactly like the original tool's per-proposal 'negotiated price'
+    box. A contract should never pass an override - see contract_price_for().
+
+    saved_prices is an optional {"basic","standard","premium"} dict - an
+    admin-edited replacement for this team's default APARTMENT_PRICES/
+    VILLA_PRICES row at this unit count (see amc_proposal_prices in
+    server.py). Unlike override, this IS the real rate book once saved, so
+    contract_price_for() below uses it too."""
     if property_type == "commercial":
         rates = commercial_rates or COMMERCIAL_RATE_DEFAULTS
         row = [round(rates[t]["base"] + rates[t]["per"] * units) for t in ("basic", "standard", "premium")]
+    elif saved_prices:
+        row = [saved_prices["basic"], saved_prices["standard"], saved_prices["premium"]]
     else:
         table = APARTMENT_PRICES if property_type == "apartment" else VILLA_PRICES
         row = list(table[units])
@@ -84,10 +92,11 @@ def price_for(property_type, units, commercial_rates=None, override=None):
     return row
 
 
-def contract_price_for(property_type, units, commercial_rates=None):
-    """A contract always reflects the true rate book - never the proposal's
-    screen-only negotiated-price override."""
-    return price_for(property_type, units, commercial_rates=commercial_rates)
+def contract_price_for(property_type, units, commercial_rates=None, saved_prices=None):
+    """A contract always reflects the true rate book - never a proposal's
+    screen-only negotiated-price override - but DOES reflect a saved
+    replacement price once an admin has saved one for this team/type/units."""
+    return price_for(property_type, units, commercial_rates=commercial_rates, saved_prices=saved_prices)
 
 
 def monthly_plan(annual):
