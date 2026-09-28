@@ -2509,6 +2509,7 @@
   // ==================================================================
   var AMC_META = null;
   var AMC_CLIENTS = [];
+  var AMC_CLIENTS_ALL = []; // active + archived - only used by the Tracker's "Show archived" view
   var AMC_HISTORY = [];
   var AMC_HANDLED = {};
   var amcExpandedRowId = null;
@@ -2527,6 +2528,10 @@
     document.getElementById("amcTrkSearch").addEventListener("input", amcRenderTracker);
     document.getElementById("amcTrkPkg").addEventListener("change", amcRenderTracker);
     document.getElementById("amcTrkStatus").addEventListener("change", amcRenderTracker);
+    document.getElementById("amcTrkShowArchived").addEventListener("change", function () {
+      amcExpandedRowId = null;
+      amcRenderTracker();
+    });
     document.getElementById("amcHistSearch").addEventListener("input", amcRenderHistory);
     document.getElementById("amcHideHandled").addEventListener("change", amcRenderActions);
 
@@ -2568,13 +2573,15 @@
   function loadAmcAll() {
     Promise.all([
       API.get("/api/amc/clients?team=" + encodeURIComponent(ACTIVE_TEAM)),
+      API.get("/api/amc/clients?team=" + encodeURIComponent(ACTIVE_TEAM) + "&showArchived=1"),
       API.get("/api/amc/history?team=" + encodeURIComponent(ACTIVE_TEAM)),
       API.get("/api/amc/actions-handled?team=" + encodeURIComponent(ACTIVE_TEAM))
     ]).then(function (res) {
       AMC_CLIENTS = res[0].clients;
-      AMC_HISTORY = res[1].history;
+      AMC_CLIENTS_ALL = res[1].clients;
+      AMC_HISTORY = res[2].history;
       AMC_HANDLED = {};
-      (res[2].handled || []).forEach(function (k) { AMC_HANDLED[k] = true; });
+      (res[3].handled || []).forEach(function (k) { AMC_HANDLED[k] = true; });
       amcExpandedRowId = null;
       amcRenderDashboard();
       amcRenderTracker();
@@ -2705,8 +2712,10 @@
 
   function amcRenderTracker() {
     var tbody = document.getElementById("amcTrackerBody");
-    var rows = AMC_CLIENTS.filter(amcPassesFilters);
-    document.getElementById("amcTrkCount").textContent = rows.length + " of " + AMC_CLIENTS.length + " clients";
+    var showArchived = document.getElementById("amcTrkShowArchived").checked;
+    var source = showArchived ? AMC_CLIENTS_ALL : AMC_CLIENTS;
+    var rows = source.filter(amcPassesFilters);
+    document.getElementById("amcTrkCount").textContent = rows.length + " of " + source.length + " clients";
 
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="14" style="padding:24px;text-align:center;color:var(--muted)">No clients match these filters.</td></tr>';
@@ -2721,9 +2730,9 @@
         var label = v.status === "N/A" ? "—" : v.status;
         return "<td>" + amcBadge(label, amcVisitPillClass(v.status)) + "</td>";
       }).join("");
-      html += '<tr class="amc-row-main' + (c.flag ? " amc-row-flagged" : "") + '" data-id="' + c.id + '">' +
+      html += '<tr class="amc-row-main' + (c.flag ? " amc-row-flagged" : "") + (c.archived ? " amc-row-archived" : "") + '" data-id="' + c.id + '">' +
         '<td><span class="amc-chevron">' + (isOpen ? "▾" : "▸") + "</span></td>" +
-        '<td class="amc-cust-cell">' + escapeHtml(c.customer) + '<span class="amc-cust-sub">' + escapeHtml(c.location || "") + (c.flag ? " · ⚠ needs review" : "") + "</span></td>" +
+        '<td class="amc-cust-cell">' + escapeHtml(c.customer) + (c.archived ? ' <span class="amc-count" style="background:var(--muted);color:#fff">Archived</span>' : "") + '<span class="amc-cust-sub">' + escapeHtml(c.location || "") + (c.flag ? " · ⚠ needs review" : "") + "</span></td>" +
         "<td>" + escapeHtml(c.package) + "</td>" +
         "<td>" + amcFmtDate(c.start) + "</td>" +
         "<td>" + amcFmtDate(c.end) + "</td>" +
@@ -2836,10 +2845,13 @@
         '<div class="amc-detail-block" style="grid-column:1/-1"><h4>Contract History — ' + escapeHtml(c.customer) + (c.location ? " (" + escapeHtml(c.location) + ")" : "") + "</h4><div>" + historyHtml + "</div></div>" +
 
         (c.flag ? '<div class="amc-detail-notice">⚠ ' + escapeHtml(c.flag) + "</div>" : "") +
+        (c.archived ? '<div class="amc-detail-notice">Archived' + (c.archivedByEmail ? " by " + escapeHtml(c.archivedByEmail) : "") + (c.archivedAt ? " on " + amcFmtDate(c.archivedAt.slice(0, 10)) : "") + " — hidden from the default Tracker view, Dashboard and Today's Actions." + "</div>" : "") +
       "</div>" +
       '<div class="amc-detail-actions">' +
         '<button type="button" class="btn btn-orange btn-sm amc-save-btn" style="display:none">Save Changes</button>' +
         '<button type="button" class="btn btn-ghost btn-sm amc-cancel-btn" style="display:none">Cancel</button>' +
+        '<button type="button" class="btn btn-ghost btn-sm amc-archive-btn">' + (c.archived ? "Restore" : "Archive") + "</button>" +
+        (CURRENT_USER_ROLE === "admin" ? '<button type="button" class="btn btn-ghost btn-sm amc-delete-btn" style="color:var(--red);border-color:var(--red)">Delete Permanently</button>' : "") +
         '<span class="hint amc-save-hint">Editing — changes are not saved until you click Save.</span>' +
       "</div>" +
     "</td></tr>";
@@ -2856,11 +2868,18 @@
       var saveBtn = tr.querySelector(".amc-save-btn");
       var cancelBtn = tr.querySelector(".amc-cancel-btn");
       var renewBtn = tr.querySelector(".amc-renew-btn");
+      var archiveBtn = tr.querySelector(".amc-archive-btn");
+      var deleteBtn = tr.querySelector(".amc-delete-btn");
       var hint = tr.querySelector(".amc-save-hint");
       var fields = tr.querySelectorAll("[data-field]");
 
+      function findClient() {
+        return AMC_CLIENTS_ALL.filter(function (x) { return x.id === id; })[0] ||
+          AMC_CLIENTS.filter(function (x) { return x.id === id; })[0];
+      }
+
       renewBtn.addEventListener("click", function () {
-        var client = AMC_CLIENTS.filter(function (x) { return x.id === id; })[0];
+        var client = findClient();
         if (!client || !client.end) { toast("This client has no end date to renew from"); return; }
         var endParts = client.end.split("-").map(Number);
         var newStart = new Date(endParts[0], endParts[1] - 1, endParts[2] + 1);
@@ -2878,6 +2897,41 @@
           }).catch(function (err) { toast(err.message || "Could not renew"); });
         });
       });
+
+      archiveBtn.addEventListener("click", function () {
+        var client = findClient();
+        if (!client) return;
+        var archiving = !client.archived;
+        var message = archiving
+          ? "Archive " + client.customer + "? They'll be hidden from the default Tracker view, Dashboard and Today's Actions until you restore them. Nothing is deleted."
+          : "Restore " + client.customer + "? They'll reappear in the default Tracker view, Dashboard and Today's Actions.";
+        confirmDialog(message).then(function (ok) {
+          if (!ok) return;
+          API.put("/api/amc/clients/" + id + "/archive", { archived: archiving }).then(function () {
+            toast(archiving ? "Client archived" : "Client restored");
+            amcExpandedRowId = null;
+            loadAmcAll();
+          }).catch(function (err) { toast(err.message || "Could not update"); });
+        });
+      });
+
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", function () {
+          var client = findClient();
+          if (!client) return;
+          confirmDialog(
+            "Permanently delete " + client.customer + "? This cannot be undone. Their Contract History stays on " +
+            "record, but the client itself, their AC PPM schedule and any pending action items are gone for good."
+          ).then(function (ok) {
+            if (!ok) return;
+            API.del("/api/amc/clients/" + id).then(function () {
+              toast("Client deleted");
+              amcExpandedRowId = null;
+              loadAmcAll();
+            }).catch(function (err) { toast(err.message || "Could not delete"); });
+          });
+        });
+      }
 
       function showActions() {
         saveBtn.style.display = "";

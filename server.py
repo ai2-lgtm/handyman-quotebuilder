@@ -786,6 +786,16 @@ def init_db():
         conn.execute("ALTER TABLE pb_contractors ADD CONSTRAINT pb_contractors_team_check CHECK (team IN ('dubai','magcity'))")
         conn.commit()
 
+    # migration: soft-archive for AMC clients. NULL archived_at means active
+    # (the default, everywhere - the Tracker, Dashboard and Today's Actions
+    # all filter on this); a non-null timestamp hides the client from those
+    # views without touching amc_history, which stays keyed off client_id
+    # regardless of whether the client is archived or later hard-deleted.
+    if not _has_column("amc_clients", "archived_at"):
+        conn.execute("ALTER TABLE amc_clients ADD COLUMN archived_at TEXT")
+        conn.execute("ALTER TABLE amc_clients ADD COLUMN archived_by_email TEXT")
+        conn.commit()
+
     seeded = cur.execute("SELECT COUNT(*) AS c FROM categories").fetchone()["c"]
     if seeded == 0:
         for order, (cat_id, cat_name, subs) in enumerate(SEED_CATEGORIES):
@@ -2256,6 +2266,8 @@ def amc_client_to_dict(r):
         "hm1Status": r["hm1_status"], "hm1Date": r["hm1_date"], "hm1Job": r["hm1_job"],
         "hm2Status": r["hm2_status"], "hm2Date": r["hm2_date"], "hm2Job": r["hm2_job"],
         "notes": r["notes"], "flag": r["flag"], "lastUpdated": r["updated_at"],
+        "archived": r["archived_at"] is not None,
+        "archivedAt": r["archived_at"], "archivedByEmail": r["archived_by_email"],
     }
     client.update(amc.client_computed(client))
     return client
@@ -2275,13 +2287,21 @@ AMC_CLIENT_FIELD_COLUMNS = {
 
 def list_amc_clients(query):
     team = query.get("team") or "dubai"
-    rows = conn_fetch_amc_clients(team)
+    include_archived = query.get("showArchived") == "1"
+    rows = conn_fetch_amc_clients(team, include_archived)
     return json_response(200, {"clients": [amc_client_to_dict(r) for r in rows]})
 
 
-def conn_fetch_amc_clients(team):
+def conn_fetch_amc_clients(team, include_archived=False):
     conn = get_conn()
-    rows = conn.execute("SELECT * FROM amc_clients WHERE team=? ORDER BY customer", (team,)).fetchall()
+    if include_archived:
+        rows = conn.execute(
+            "SELECT * FROM amc_clients WHERE team=? ORDER BY (archived_at IS NOT NULL), customer", (team,)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM amc_clients WHERE team=? AND archived_at IS NULL ORDER BY customer", (team,)
+        ).fetchall()
     conn.close()
     return rows
 
@@ -2342,6 +2362,52 @@ def update_amc_client(cid, body, actor_email):
     row = conn.execute("SELECT * FROM amc_clients WHERE id=?", (cid,)).fetchone()
     conn.close()
     return json_response(200, amc_client_to_dict(row))
+
+
+def set_amc_client_archived(cid, body, actor_email):
+    """Soft-archive/restore - any signed-in user, same as every other AMC
+    Tracker edit. Archiving just hides the client from the default Tracker
+    view, Dashboard KPIs and Today's Actions (see conn_fetch_amc_clients);
+    nothing is deleted, and it's fully reversible."""
+    conn = get_conn()
+    row = conn.execute("SELECT id FROM amc_clients WHERE id=?", (cid,)).fetchone()
+    if not row:
+        conn.close()
+        return json_response(404, {"error": "not found"})
+    ts = now_iso()
+    if body.get("archived"):
+        conn.execute(
+            "UPDATE amc_clients SET archived_at=?, archived_by_email=?, updated_at=?, updated_by_email=? WHERE id=?",
+            (ts, actor_email, ts, actor_email, cid),
+        )
+    else:
+        conn.execute(
+            "UPDATE amc_clients SET archived_at=NULL, archived_by_email=NULL, updated_at=?, updated_by_email=? WHERE id=?",
+            (ts, actor_email, cid),
+        )
+    conn.commit()
+    row = conn.execute("SELECT * FROM amc_clients WHERE id=?", (cid,)).fetchone()
+    conn.close()
+    return json_response(200, amc_client_to_dict(row))
+
+
+def delete_amc_client(cid):
+    """Hard delete - admin-only, permanent (see handle_delete). amc_history
+    rows for this client are kept: client_id there is declared ON DELETE SET
+    NULL, so Contract History stays intact and simply loses the live link.
+    Today's Actions handled-state for this client is cleaned up explicitly
+    since action_key is a plain string (client id embedded in it), not a
+    real foreign key the database can cascade on its own."""
+    conn = get_conn()
+    row = conn.execute("SELECT id, team FROM amc_clients WHERE id=?", (cid,)).fetchone()
+    if not row:
+        conn.close()
+        return json_response(404, {"error": "not found"})
+    conn.execute("DELETE FROM amc_action_handled WHERE team=? AND action_key LIKE ?", (row["team"], "%" + cid + "%"))
+    conn.execute("DELETE FROM amc_clients WHERE id=?", (cid,))
+    conn.commit()
+    conn.close()
+    return json_response(200, {"ok": True})
 
 
 def renew_amc_client(cid, actor_email):
@@ -3324,6 +3390,10 @@ def handle_put(environ, path, body):
             return forbidden()
         return update_pb_supplier(m.group(1), body)
 
+    m = re.match(r"^/api/amc/clients/([\w-]+)/archive$", path)
+    if m:
+        return set_amc_client_archived(m.group(1), body, user["email"])
+
     m = re.match(r"^/api/amc/clients/([\w-]+)$", path)
     if m:
         return update_amc_client(m.group(1), body, user["email"])
@@ -3439,6 +3509,12 @@ def handle_delete(environ, path):
         if not is_admin(user):
             return forbidden()
         return delete_pb_contractor(m.group(1))
+
+    m = re.match(r"^/api/amc/clients/([\w-]+)$", path)
+    if m:
+        if not is_admin(user):
+            return forbidden()
+        return delete_amc_client(m.group(1))
 
     m = re.match(r"^/api/templates/([\w-]+)$", path)
     if m:
