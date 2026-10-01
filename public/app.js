@@ -2510,6 +2510,8 @@
   var AMC_META = null;
   var AMC_CLIENTS = [];
   var AMC_CLIENTS_ALL = []; // active + archived - only used by the Tracker's "Show archived" view
+  var AMC_REVENUE = [];
+  var AMC_REVENUE_MONTHS = []; // closed months - see amcRenderRevenue()
   var AMC_HISTORY = [];
   var AMC_HANDLED = {};
   var amcExpandedRowId = null;
@@ -2534,6 +2536,7 @@
     });
     document.getElementById("amcHistSearch").addEventListener("input", amcRenderHistory);
     document.getElementById("amcHideHandled").addEventListener("change", amcRenderActions);
+    amcWireRevenue();
 
     document.getElementById("amcFPackage").addEventListener("input", amcUpdateSchedulePreview);
     document.getElementById("amcFStart").addEventListener("input", amcUpdateSchedulePreview);
@@ -2575,18 +2578,23 @@
       API.get("/api/amc/clients?team=" + encodeURIComponent(ACTIVE_TEAM)),
       API.get("/api/amc/clients?team=" + encodeURIComponent(ACTIVE_TEAM) + "&showArchived=1"),
       API.get("/api/amc/history?team=" + encodeURIComponent(ACTIVE_TEAM)),
-      API.get("/api/amc/actions-handled?team=" + encodeURIComponent(ACTIVE_TEAM))
+      API.get("/api/amc/actions-handled?team=" + encodeURIComponent(ACTIVE_TEAM)),
+      API.get("/api/amc/revenue?team=" + encodeURIComponent(ACTIVE_TEAM)),
+      API.get("/api/amc/revenue/months?team=" + encodeURIComponent(ACTIVE_TEAM))
     ]).then(function (res) {
       AMC_CLIENTS = res[0].clients;
       AMC_CLIENTS_ALL = res[1].clients;
       AMC_HISTORY = res[2].history;
       AMC_HANDLED = {};
       (res[3].handled || []).forEach(function (k) { AMC_HANDLED[k] = true; });
+      AMC_REVENUE = res[4].entries;
+      AMC_REVENUE_MONTHS = res[5].months;
       amcExpandedRowId = null;
       amcRenderDashboard();
       amcRenderTracker();
       amcRenderActions();
       amcRenderHistory();
+      amcRenderRevenue();
     }).catch(function () { toast("Could not load AMC data"); });
   }
 
@@ -2697,6 +2705,115 @@
 
     document.getElementById("amcCntTracker").textContent = active;
     document.getElementById("amcCntActions").textContent = behind.length + paymentsOut + visitsOverdue;
+  }
+
+  // ---------------------------------------------------------- REVENUE CALCULATOR
+  var AMC_MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August",
+    "September", "October", "November", "December"];
+
+  function amcRevMonthLabel(key) {
+    var parts = key.split("-");
+    return AMC_MONTH_NAMES[parseInt(parts[1], 10) - 1] + " " + parts[0];
+  }
+
+  function amcRenderRevenue() {
+    var closedKeys = {};
+    AMC_REVENUE_MONTHS.forEach(function (m) { closedKeys[m.monthKey] = true; });
+    var currentEntries = AMC_REVENUE.filter(function (e) { return !closedKeys[(e.date || "").slice(0, 7)]; });
+
+    // ---- current-month summary strip ----
+    var openMonthKeys = Object.keys(currentEntries.reduce(function (acc, e) { acc[(e.date || "").slice(0, 7)] = true; return acc; }, {}));
+    var currentTotal = currentEntries.reduce(function (sum, e) { return sum + (Number(e.value) || 0); }, 0);
+    var currentLabel = openMonthKeys.length === 1 ? amcRevMonthLabel(openMonthKeys[0])
+      : openMonthKeys.length > 1 ? (openMonthKeys.length + " open months (never closed)")
+      : amcRevMonthLabel(todayISO().slice(0, 7));
+    document.getElementById("amcRevCurrentSummary").innerHTML =
+      '<span class="arc-label">' + escapeHtml(currentLabel) + '</span>' +
+      '<span class="arc-total">AED ' + Math.round(currentTotal).toLocaleString() + "</span>" +
+      '<span class="arc-meta">' + currentEntries.length + (currentEntries.length === 1 ? " entry" : " entries") + " · not yet closed</span>";
+
+    // ---- current month entries table ----
+    var entriesBody = document.getElementById("amcRevEntriesBody");
+    if (!currentEntries.length) {
+      entriesBody.innerHTML = '<tr><td colspan="4" class="hint" style="padding:14px 8px">Nothing logged yet this month — add the first entry above.</td></tr>';
+    } else {
+      entriesBody.innerHTML = currentEntries.map(function (e) {
+        var who = [e.clientName, e.details].filter(Boolean).map(escapeHtml).join(" — ");
+        return "<tr>" +
+          "<td>" + amcFmtDate(e.date) + "</td>" +
+          "<td>" + (who || '<span class="hint">—</span>') + "</td>" +
+          '<td class="num">' + Math.round(e.value).toLocaleString() + "</td>" +
+          '<td><button type="button" class="btn btn-ghost btn-sm" data-del-rev="' + e.id + '" title="Delete entry">&times;</button></td>' +
+          "</tr>";
+      }).join("");
+    }
+
+    // ---- month history (closed months) ----
+    var monthlyBody = document.getElementById("amcRevMonthlyBody");
+    if (!AMC_REVENUE_MONTHS.length) {
+      monthlyBody.innerHTML = '<tr><td colspan="4" class="hint" style="padding:14px 8px">No closed months yet — use "Start New Month" once this month is done.</td></tr>';
+    } else {
+      var sorted = AMC_REVENUE_MONTHS.slice().sort(function (a, b) { return b.monthKey.localeCompare(a.monthKey); });
+      monthlyBody.innerHTML = sorted.map(function (m) {
+        return "<tr><td>" + escapeHtml(m.label) + "</td><td class=\"num\">" + Math.round(m.total).toLocaleString() +
+          "</td><td class=\"num\">" + m.count + "</td><td>" + amcFmtDate((m.closedAt || "").slice(0, 10)) + "</td></tr>";
+      }).join("");
+    }
+  }
+
+  function amcWireRevenue() {
+    var dateInput = document.getElementById("amcRevDate");
+    if (!dateInput.value) dateInput.value = todayISO();
+
+    document.getElementById("amcRevAddBtn").addEventListener("click", function () {
+      var value = parseFloat(document.getElementById("amcRevValue").value);
+      if (!value || value <= 0) { toast("Enter a contract value greater than 0"); return; }
+      var body = {
+        team: ACTIVE_TEAM,
+        value: value,
+        clientName: document.getElementById("amcRevClient").value.trim(),
+        details: document.getElementById("amcRevDetails").value.trim(),
+        date: document.getElementById("amcRevDate").value || todayISO()
+      };
+      API.post("/api/amc/revenue", body).then(function () {
+        document.getElementById("amcRevValue").value = "";
+        document.getElementById("amcRevClient").value = "";
+        document.getElementById("amcRevDetails").value = "";
+        document.getElementById("amcRevDate").value = todayISO();
+        toast("Entry added");
+        loadAmcAll();
+      }).catch(function (err) { toast(err.message || "Could not add entry"); });
+    });
+
+    document.getElementById("amcRevExportBtn").addEventListener("click", function () {
+      window.open("/api/amc/revenue/export?team=" + encodeURIComponent(ACTIVE_TEAM), "_blank");
+    });
+
+    document.getElementById("amcRevStartNewMonthBtn").addEventListener("click", function () {
+      confirmDialog(
+        "Start a new month? Every past month that still has unclosed entries gets its total frozen into Month " +
+        "History, permanently - the current month always stays open. This can't be undone."
+      ).then(function (ok) {
+        if (!ok) return;
+        API.post("/api/amc/revenue/close-month", { team: ACTIVE_TEAM }).then(function (res) {
+          var closed = res.closed || [];
+          toast(closed.length === 1 ? ("Closed " + closed[0].label) : (closed.length + " months closed"));
+          loadAmcAll();
+        }).catch(function (err) { toast(err.message || "Could not close the month"); });
+      });
+    });
+
+    document.getElementById("amcRevEntriesBody").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-del-rev]");
+      if (!btn) return;
+      confirmDialog("Delete this entry? This cannot be undone.").then(function (ok) {
+        if (!ok) return;
+        API.del("/api/amc/revenue/" + btn.dataset.delRev).then(function () {
+          toast("Entry deleted");
+          loadAmcAll();
+        }).catch(function (err) { toast(err.message || "Could not delete"); });
+      });
+    });
   }
 
   // ---------------------------------------------------------------- TRACKER

@@ -607,6 +607,49 @@
             <p class="hint" style="margin-bottom:16px">Every figure below is calculated live from Contracts &amp; Servicing — nothing here is typed in by hand.</p>
             <div class="grid cols4" id="amcKpiRow" style="margin-bottom:0"></div>
           </div>
+
+          <div class="card" id="amcRevenueCard">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:4px">
+              <div>
+                <h2 class="plain">AMC Revenue Calculator</h2>
+                <p class="hint" style="margin:2px 0 0">Log each contract's value as it's won. When the month's done, close it out — it moves to history permanently and a fresh tally starts.</p>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-ghost btn-sm" id="amcRevStartNewMonthBtn">Start New Month &rarr;</button>
+                <button class="btn btn-ghost btn-sm" id="amcRevExportBtn">Export to Excel</button>
+              </div>
+            </div>
+            <div class="addbar" style="margin:14px 0">
+              <input type="number" id="amcRevValue" placeholder="Contract value (AED)" style="max-width:170px" min="0" step="1">
+              <input type="text" id="amcRevClient" placeholder="Client / quote (optional)" style="flex:1">
+              <input type="text" id="amcRevDetails" placeholder="Details (optional)" style="flex:1">
+              <input type="date" id="amcRevDate" style="max-width:160px">
+              <button class="btn btn-orange btn-sm" id="amcRevAddBtn">+ Add Entry</button>
+            </div>
+            <div id="amcRevCurrentSummary" class="amc-revenue-current"></div>
+            <div class="grid cols2" style="margin-top:14px">
+              <div>
+                <h3 class="pb-section-title" style="margin-bottom:8px;font-size:14px">Current Month Entries</h3>
+                <div style="overflow-x:auto;max-height:260px;overflow-y:auto">
+                  <table class="amc-table">
+                    <thead><tr><th>Date</th><th>Client / Details</th><th class="num">Value</th><th></th></tr></thead>
+                    <tbody id="amcRevEntriesBody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div>
+                <h3 class="pb-section-title" style="margin-bottom:8px;font-size:14px">Month History</h3>
+                <p class="hint" style="margin:-4px 0 8px">Closed months — finalized, read-only.</p>
+                <div style="overflow-x:auto;max-height:260px;overflow-y:auto">
+                  <table class="amc-table">
+                    <thead><tr><th>Month</th><th class="num">Total (AED)</th><th class="num">Entries</th><th>Closed</th></tr></thead>
+                    <tbody id="amcRevMonthlyBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="grid cols2">
             <div class="card">
               <h2>Clients Behind Schedule</h2>

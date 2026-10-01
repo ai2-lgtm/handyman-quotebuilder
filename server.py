@@ -13,6 +13,7 @@ functions around one `application(environ, start_response)` entry point,
 rather than a http.server.BaseHTTPRequestHandler subclass.
 """
 import http.cookies
+import io
 import json
 import os
 from datetime import date, timedelta
@@ -28,6 +29,8 @@ import uuid
 import webbrowser
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
+import openpyxl
+from openpyxl.styles import Font
 import psycopg2
 import psycopg2.extras
 
@@ -708,6 +711,25 @@ def init_db():
             pdf BYTEA NOT NULL,
             created_at TEXT NOT NULL,
             created_by_email TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS amc_revenue_entries (
+            id TEXT PRIMARY KEY,
+            team TEXT NOT NULL DEFAULT 'dubai' CHECK(team IN ('dubai','magcity')),
+            entry_date TEXT NOT NULL,
+            value DOUBLE PRECISION NOT NULL,
+            client_name TEXT,
+            details TEXT,
+            created_at TEXT NOT NULL,
+            created_by_email TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS amc_revenue_months (
+            team TEXT NOT NULL CHECK(team IN ('dubai','magcity')),
+            month_key TEXT NOT NULL,
+            closed_at TEXT NOT NULL,
+            closed_by_email TEXT NOT NULL,
+            total_at_close DOUBLE PRECISION NOT NULL,
+            entry_count_at_close INTEGER NOT NULL,
+            PRIMARY KEY (team, month_key)
         );
     """)
     conn.commit()
@@ -1401,6 +1423,15 @@ def pdf_response(pdf_bytes, filename):
         ("Content-Disposition", 'attachment; filename="%s.pdf"' % filename.replace('"', "")),
     ]
     return 200, headers, pdf_bytes
+
+
+def xlsx_response(xlsx_bytes, filename):
+    headers = [
+        ("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        ("Content-Length", str(len(xlsx_bytes))),
+        ("Content-Disposition", 'attachment; filename="%s.xlsx"' % filename.replace('"', "")),
+    ]
+    return 200, headers, xlsx_bytes
 
 
 def not_found():
@@ -2901,6 +2932,236 @@ def get_amc_contract_pdf(cid):
     return pdf_response(bytes(row["pdf"]), filename)
 
 
+# ---------------------------------------------------------------------------
+# AMC Revenue Calculator - a lightweight running tally of AMC contract value
+# won, shown on the Tracker Dashboard. Deliberately separate from the full
+# amc_clients lifecycle: logging a closed deal here needs nothing but a value
+# (client/details are optional), so it doesn't force filling in the whole
+# Tracker record just to count the win. Team-scoped like the rest of AMC
+# Tracker; no admin gating, matching every other AMC Tracker edit.
+# ---------------------------------------------------------------------------
+
+MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July", "August", "September",
+               "October", "November", "December")
+
+
+def amc_revenue_to_dict(r):
+    return {
+        "id": r["id"], "team": r["team"], "date": r["entry_date"], "value": r["value"],
+        "clientName": r["client_name"], "details": r["details"],
+        "createdAt": r["created_at"], "createdByEmail": r["created_by_email"],
+    }
+
+
+def list_amc_revenue(query):
+    team = query.get("team") or "dubai"
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM amc_revenue_entries WHERE team=? ORDER BY entry_date DESC, created_at DESC", (team,)
+    ).fetchall()
+    conn.close()
+    return json_response(200, {"entries": [amc_revenue_to_dict(r) for r in rows]})
+
+
+def create_amc_revenue(body, actor_email):
+    team = body.get("team") or "dubai"
+    if team not in ("dubai", "magcity"):
+        return json_response(400, {"error": "team must be 'dubai' or 'magcity'"})
+    try:
+        value = float(body.get("value"))
+    except (TypeError, ValueError):
+        return json_response(400, {"error": "value is required and must be a number"})
+    if value <= 0:
+        return json_response(400, {"error": "value must be greater than 0"})
+    entry_date = body.get("date") or date.today().isoformat()
+    if not amc.parse_date(entry_date):
+        return json_response(400, {"error": "date must be YYYY-MM-DD"})
+
+    rid = uuid.uuid4().hex
+    ts = now_iso()
+    conn = get_conn()
+    if _amc_revenue_month_closed(conn, team, entry_date[:7]):
+        conn.close()
+        return json_response(409, {"error": "That month is closed - log this under the current month instead."})
+    conn.execute(
+        "INSERT INTO amc_revenue_entries (id, team, entry_date, value, client_name, details, created_at, "
+        "created_by_email) VALUES (?,?,?,?,?,?,?,?)",
+        (rid, team, entry_date, value, (body.get("clientName") or "").strip() or None,
+         (body.get("details") or "").strip() or None, ts, actor_email),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM amc_revenue_entries WHERE id=?", (rid,)).fetchone()
+    conn.close()
+    return json_response(201, amc_revenue_to_dict(row))
+
+
+def delete_amc_revenue(rid):
+    conn = get_conn()
+    row = conn.execute("SELECT id, team, entry_date FROM amc_revenue_entries WHERE id=?", (rid,)).fetchone()
+    if not row:
+        conn.close()
+        return json_response(404, {"error": "not found"})
+    if _amc_revenue_month_closed(conn, row["team"], (row["entry_date"] or "")[:7]):
+        conn.close()
+        return json_response(409, {"error": "That month is closed and can't be changed - it's a finalized record."})
+    conn.execute("DELETE FROM amc_revenue_entries WHERE id=?", (rid,))
+    conn.commit()
+    conn.close()
+    return json_response(200, {"ok": True})
+
+
+def amc_revenue_month_label(month_key):
+    year, mo = month_key.split("-")
+    return "%s %s" % (MONTH_NAMES[int(mo) - 1], year)
+
+
+def _amc_revenue_month_closed(conn, team, month_key):
+    return bool(conn.execute(
+        "SELECT 1 FROM amc_revenue_months WHERE team=? AND month_key=?", (team, month_key)
+    ).fetchone())
+
+
+def amc_revenue_month_to_dict(r):
+    return {
+        "team": r["team"], "monthKey": r["month_key"], "label": amc_revenue_month_label(r["month_key"]),
+        "closedAt": r["closed_at"], "closedByEmail": r["closed_by_email"],
+        "total": r["total_at_close"], "count": r["entry_count_at_close"],
+    }
+
+
+def list_amc_revenue_months(query):
+    team = query.get("team") or "dubai"
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM amc_revenue_months WHERE team=? ORDER BY month_key DESC", (team,)
+    ).fetchall()
+    conn.close()
+    return json_response(200, {"months": [amc_revenue_month_to_dict(r) for r in rows]})
+
+
+def close_amc_revenue_month(body, actor_email):
+    """'Start New Month': snapshots the total/count of every month that has
+    entries but hasn't been closed yet, and freezes it into amc_revenue_months.
+    Nothing in amc_revenue_entries is touched or moved - the entries
+    themselves stay put forever as the permanent detail record; closing just
+    tells the Tracker to treat that month as history instead of the live,
+    still-growing current month (and, per create/delete above, locks it
+    against further additions or deletions). Closes every unclosed month at
+    once, not just "this" one, so turning the feature on for the first time
+    against months of existing entries is a single click, not one per month."""
+    team = body.get("team") or "dubai"
+    if team not in ("dubai", "magcity"):
+        return json_response(400, {"error": "team must be 'dubai' or 'magcity'"})
+    conn = get_conn()
+    entry_rows = conn.execute("SELECT entry_date, value FROM amc_revenue_entries WHERE team=?", (team,)).fetchall()
+    already_closed = {r["month_key"] for r in conn.execute(
+        "SELECT month_key FROM amc_revenue_months WHERE team=?", (team,)
+    ).fetchall()}
+
+    current_month_key = date.today().isoformat()[:7]
+    monthly = {}
+    for r in entry_rows:
+        month_key = (r["entry_date"] or "")[:7]
+        if not month_key or month_key in already_closed or month_key == current_month_key:
+            continue
+        bucket = monthly.setdefault(month_key, {"total": 0.0, "count": 0})
+        bucket["total"] += r["value"]
+        bucket["count"] += 1
+
+    if not monthly:
+        conn.close()
+        return json_response(400, {
+            "error": "Nothing to close - there's no unclosed activity from before this month. The current "
+                     "month stays open until it's in the past."
+        })
+
+    ts = now_iso()
+    closed = []
+    for month_key, bucket in monthly.items():
+        conn.execute(
+            "INSERT INTO amc_revenue_months (team, month_key, closed_at, closed_by_email, total_at_close, "
+            "entry_count_at_close) VALUES (?,?,?,?,?,?)",
+            (team, month_key, ts, actor_email, bucket["total"], bucket["count"]),
+        )
+        closed.append({"monthKey": month_key, "label": amc_revenue_month_label(month_key),
+                        "total": bucket["total"], "count": bucket["count"]})
+    conn.commit()
+    conn.close()
+    closed.sort(key=lambda m: m["monthKey"])
+    return json_response(200, {"closed": closed})
+
+
+def export_amc_revenue(query):
+    team = query.get("team") or "dubai"
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM amc_revenue_entries WHERE team=? ORDER BY entry_date", (team,)
+    ).fetchall()
+    closed_rows = conn.execute(
+        "SELECT * FROM amc_revenue_months WHERE team=? ORDER BY month_key", (team,)
+    ).fetchall()
+    conn.close()
+    closed_by_month = {r["month_key"]: r for r in closed_rows}
+
+    monthly = {}
+    for r in rows:
+        month_key = (r["entry_date"] or "")[:7]  # "YYYY-MM"
+        bucket = monthly.setdefault(month_key, {"total": 0.0, "count": 0})
+        bucket["total"] += r["value"]
+        bucket["count"] += 1
+
+    wb = openpyxl.Workbook()
+    bold = Font(bold=True)
+    money_fmt = "#,##0.00"
+
+    summary = wb.active
+    summary.title = "Monthly Totals"
+    summary.append(["Month", "Total Value (AED)", "Entries", "Status", "Closed At", "Closed By"])
+    for cell in summary[1]:
+        cell.font = bold
+    grand_total = 0.0
+    for month_key in sorted(k for k in monthly if k):
+        label = amc_revenue_month_label(month_key)
+        closed = closed_by_month.get(month_key)
+        summary.append([
+            label, monthly[month_key]["total"], monthly[month_key]["count"],
+            "Closed" if closed else "Open", closed["closed_at"] if closed else "",
+            closed["closed_by_email"] if closed else "",
+        ])
+        summary.cell(row=summary.max_row, column=2).number_format = money_fmt
+        grand_total += monthly[month_key]["total"]
+    summary.append(["Grand Total", grand_total, len(rows), "", "", ""])
+    for cell in summary[summary.max_row]:
+        cell.font = bold
+    summary.cell(row=summary.max_row, column=2).number_format = money_fmt
+    summary.column_dimensions["A"].width = 20
+    summary.column_dimensions["B"].width = 20
+    summary.column_dimensions["C"].width = 12
+    summary.column_dimensions["D"].width = 10
+    summary.column_dimensions["E"].width = 20
+    summary.column_dimensions["F"].width = 24
+
+    detail = wb.create_sheet("All Entries")
+    detail.append(["Date", "Client / Quote", "Details", "Value (AED)", "Logged By", "Logged At"])
+    for cell in detail[1]:
+        cell.font = bold
+    for r in sorted(rows, key=lambda x: x["entry_date"] or "", reverse=True):
+        detail.append([r["entry_date"], r["client_name"] or "", r["details"] or "", r["value"],
+                        r["created_by_email"], r["created_at"]])
+        detail.cell(row=detail.max_row, column=4).number_format = money_fmt
+    detail.column_dimensions["A"].width = 12
+    detail.column_dimensions["B"].width = 24
+    detail.column_dimensions["C"].width = 30
+    detail.column_dimensions["D"].width = 16
+    detail.column_dimensions["E"].width = 24
+    detail.column_dimensions["F"].width = 20
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    filename = "AMC Revenue - %s - %s" % (team, date.today().isoformat())
+    return xlsx_response(buf.getvalue(), filename)
+
+
 def reset_pricebook_team(team):
     """Admin 'Reset This Team to Original': wipes this team's Materials,
     Labour, Fixed Services and Suppliers, then reseeds from the same
@@ -3239,6 +3500,12 @@ def handle_get(environ, path, query):
         m = re.match(r"^/api/amc-contracts/([\w-]+)/pdf$", path)
         if m:
             return get_amc_contract_pdf(m.group(1))
+        if path == "/api/amc/revenue":
+            return list_amc_revenue(query)
+        if path == "/api/amc/revenue/months":
+            return list_amc_revenue_months(query)
+        if path == "/api/amc/revenue/export":
+            return export_amc_revenue(query)
         if path == "/api/templates":
             return list_templates(query)
         m = re.match(r"^/api/templates/([\w-]+)$", path)
@@ -3315,6 +3582,10 @@ def handle_post(environ, path, body):
             return create_amc_proposal(body, user["email"])
         if path == "/api/amc-contracts":
             return create_amc_contract(body, user["email"])
+        if path == "/api/amc/revenue":
+            return create_amc_revenue(body, user["email"])
+        if path == "/api/amc/revenue/close-month":
+            return close_amc_revenue_month(body, user["email"])
         if path == "/api/templates":
             if not is_admin(user):
                 return forbidden()
@@ -3515,6 +3786,10 @@ def handle_delete(environ, path):
         if not is_admin(user):
             return forbidden()
         return delete_amc_client(m.group(1))
+
+    m = re.match(r"^/api/amc/revenue/([\w-]+)$", path)
+    if m:
+        return delete_amc_revenue(m.group(1))
 
     m = re.match(r"^/api/templates/([\w-]+)$", path)
     if m:
