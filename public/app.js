@@ -2526,6 +2526,10 @@
       btn.addEventListener("click", function () { amcSwitchSubtab(btn.dataset.amc); });
     });
     document.getElementById("amcBtnGoAdd").addEventListener("click", function () { amcSwitchSubtab("add"); });
+    document.getElementById("amcBtnExport").addEventListener("click", function () {
+      window.location.href = "/api/amc/clients/export?team=" + encodeURIComponent(ACTIVE_TEAM) +
+        (document.getElementById("amcTrkShowArchived").checked ? "&showArchived=1" : "");
+    });
 
     document.getElementById("amcTrkSearch").addEventListener("input", amcRenderTracker);
     document.getElementById("amcTrkPkg").addEventListener("change", amcRenderTracker);
@@ -2835,7 +2839,7 @@
     document.getElementById("amcTrkCount").textContent = rows.length + " of " + source.length + " clients";
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="14" style="padding:24px;text-align:center;color:var(--muted)">No clients match these filters.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="15" style="padding:24px;text-align:center;color:var(--muted)">No clients match these filters.</td></tr>';
       return;
     }
 
@@ -2856,6 +2860,7 @@
         '<td class="num">' + (c.daysLeft === null ? "—" : c.daysLeft) + "</td>" +
         "<td>" + (c.renewalAlert ? amcBadge(c.renewalAlert, amcAlertPillClass(c.renewalAlert)) : "") + "</td>" +
         "<td>" + amcBadge(c.payStatus, amcPayPillClass(c.payFlag)) + "</td>" +
+        '<td class="amc-pay-edit"><input type="number" class="amc-pay-input" data-pay-for="' + c.id + '" min="0" step="any" placeholder="AED 0.00" title="Amount in AED" value="' + (c.payAmount == null ? "" : c.payAmount) + '"></td>' +
         visitCells +
         "<td>" + amcBadge(trackLabel, amcTrackPillClass(c.trackStatus)) + "</td>" +
         "<td>" + amcBadge(c.wtcStatus || "N/A", amcManualStatusPillClass(c.wtcStatus)) + "</td>" +
@@ -2867,7 +2872,34 @@
     tbody.querySelectorAll("tr.amc-row-main").forEach(function (tr) {
       tr.addEventListener("click", function () { amcOpenClientRow(tr.dataset.id); });
     });
+    tbody.querySelectorAll(".amc-pay-edit").forEach(function (td) {
+      td.addEventListener("click", function (e) { e.stopPropagation(); });
+      var input = td.querySelector("input");
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") input.blur();
+        else if (e.key === "Escape") { input.value = input.defaultValue; input.blur(); }
+      });
+      input.addEventListener("change", function () { amcSavePaymentNote(td, input); });
+    });
     amcWireDetailInputs();
+  }
+
+  function amcSavePaymentNote(td, input) {
+    var id = input.dataset.payFor;
+    var value = input.value.trim();
+    if (value !== "" && (isNaN(+value) || +value < 0)) { toast("Enter an amount of 0 or more"); input.value = input.defaultValue; return; }
+    API.put("/api/amc/clients/" + id, { payAmount: value === "" ? null : +value }).then(function (updated) {
+      [AMC_CLIENTS, AMC_CLIENTS_ALL].forEach(function (list) {
+        var idx = list.findIndex(function (c) { return c.id === id; });
+        if (idx !== -1) list[idx] = updated;
+      });
+      input.value = updated.payAmount == null ? "" : updated.payAmount;
+      input.defaultValue = input.value;
+      var open = document.querySelector('tr[data-detail-for="' + id + '"] [data-field="payAmount"]');
+      if (open) open.value = input.value;
+      td.classList.add("saved");
+      setTimeout(function () { td.classList.remove("saved"); }, 900);
+    }).catch(function (err) { toast(err.message || "Could not save payment details"); });
   }
 
   function amcOpenClientRow(id) {
@@ -2914,7 +2946,7 @@
       return '<option value="' + t + '" ' + (c.team === t ? "selected" : "") + ">" + TEAM_LABELS[t] + "</option>";
     }).join("");
 
-    return '<tr class="amc-row-detail" data-detail-for="' + c.id + '"><td colspan="14">' +
+    return '<tr class="amc-row-detail" data-detail-for="' + c.id + '"><td colspan="15">' +
       '<div class="amc-detail-grid">' +
         '<div class="amc-detail-block"><div class="amc-detail-block-head"><h4>Contract</h4>' +
           '<button type="button" class="btn btn-ghost btn-sm amc-renew-btn">Renew Contract &rarr;</button></div>' +
@@ -2936,6 +2968,7 @@
             '<div><label>Type</label><select data-field="payType">' + amcOptionList(["Upfront", "50/50", "Monthly", "FOC"], c.payType) + "</select></div>" +
             '<div><label>Status</label><select data-field="payStatus">' + amcOptionList(["Paid", "50% Paid", "Unpaid", "FOC"], c.payStatus) + "</select></div>" +
           "</div>" +
+          '<div class="amc-field-row"><label>Amount (AED)</label><input type="number" min="0" step="any" data-field="payAmount" value="' + (c.payAmount == null ? "" : c.payAmount) + '"></div>' +
           '<div class="amc-field-row"><label>Payment notes</label><input type="text" data-field="payNotes" value="' + escapeAttr(c.payNotes || "") + '"></div>' +
         "</div>" +
 
@@ -3313,42 +3346,7 @@
   function apLoadSavedPrice() {
     var type = document.getElementById("apPropType").value;
     var units = parseInt(document.getElementById("apAcUnits").value, 10);
-    apUpdateSavedPriceVisibility();
     apLoadSavedPriceFor(type, units).then(function () { apRenderPreview(); });
-  }
-
-  function apUpdateSavedPriceVisibility() {
-    var btn = document.getElementById("apBtnSaveStandardPrice");
-    if (!btn) return;
-    var isCommercial = document.getElementById("apPropType").value === "commercial";
-    btn.style.display = (isCommercial || CURRENT_USER_ROLE !== "admin") ? "none" : "";
-  }
-
-  function apSaveStandardPrice() {
-    var type = document.getElementById("apPropType").value;
-    var units = parseInt(document.getElementById("apAcUnits").value, 10);
-    if (type === "commercial" || !units) return;
-    var current = apPriceFor(type, units, apReadOverride());
-    var label = TEAM_LABELS[ACTIVE_TEAM] + " " + AP_META.typeLabel[type] + " (" + units + " unit" + (units === 1 ? "" : "s") + ")";
-    confirmDialog(
-      "Save AED " + Math.round(current[0]).toLocaleString() + " / " + Math.round(current[1]).toLocaleString() + " / " +
-      Math.round(current[2]).toLocaleString() + " as the new standard Basic/Standard/Premium price for " + label +
-      "? This replaces the default for every future proposal and contract - not just this one."
-    ).then(function (ok) {
-      if (!ok) return;
-      API.put("/api/amc-proposals/prices", {
-        team: ACTIVE_TEAM, propertyType: type, units: units,
-        basic: current[0], standard: current[1], premium: current[2]
-      }).then(function (r) {
-        AP_SAVED_PRICE_CACHE[apSavedPriceKey(type, units)] = r.saved;
-        document.getElementById("apOverrideBasic").value = "";
-        document.getElementById("apOverrideStandard").value = "";
-        document.getElementById("apOverridePremium").value = "";
-        toast("Saved as the new standard price for " + TEAM_LABELS[ACTIVE_TEAM]);
-        apRenderPreview();
-        acUpdateValueHint();
-      }).catch(function (err) { toast(err.message || "Could not save price"); });
-    });
   }
 
   function apPriceFor(type, units, override) {
@@ -3378,12 +3376,6 @@
     return { planTotal: planTotal, deposit: deposit, monthly: monthly };
   }
 
-  function apReadOverride() {
-    var raw = [document.getElementById("apOverrideBasic").value, document.getElementById("apOverrideStandard").value, document.getElementById("apOverridePremium").value];
-    var vals = raw.map(function (v) { var n = Number(v); return (v !== "" && !isNaN(n)) ? n : null; });
-    return vals.some(function (v) { return v != null; }) ? vals : null;
-  }
-
   // Same call-out counts and per-tier highlight bullets as amc_proposal.py's
   // callouts_for()/card_highlights() - mirrored here for the same reason as
   // the pricing math above: only for this live preview, the server always
@@ -3404,7 +3396,8 @@
   function apCardHighlights(propertyType) {
     var co = apCalloutsFor(propertyType);
     var sub = [String(co.basic), String(co.standard), null];
-    var template = AP_HIGHLIGHTS || [[], [], []];
+    var pend = pendingWording("proposal");
+    var template = (pend && pend.highlights) || AP_HIGHLIGHTS || [[], [], []];
     return template.map(function (bullets, tierIdx) {
       return bullets.map(function (b) {
         var text = b.text || "";
@@ -3417,49 +3410,8 @@
   function apLoadHighlights() {
     API.get("/api/amc-proposals/highlights?team=" + encodeURIComponent(ACTIVE_TEAM)).then(function (r) {
       AP_HIGHLIGHTS = r.highlights;
-      apRenderHighlightsEditor();
       apRenderPreview();
     }).catch(function () {});
-  }
-
-  function apRenderHighlightsEditor() {
-    var wrap = document.getElementById("apHighlightsGrid");
-    if (!wrap || !AP_HIGHLIGHTS) return;
-    wrap.innerHTML = AP_META.tiers.map(function (tier, tierIdx) {
-      var rows = AP_HIGHLIGHTS[tierIdx].map(function (b, bulletIdx) {
-        return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">' +
-          '<input type="text" class="ap-hl-text" data-tier="' + tierIdx + '" data-bullet="' + bulletIdx + '" value="' + escapeAttr(b.text) + '" style="flex:1">' +
-          '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);white-space:nowrap;text-transform:none;font-weight:400;">' +
-            '<input type="checkbox" class="ap-hl-off" data-tier="' + tierIdx + '" data-bullet="' + bulletIdx + '"' + (b.off ? " checked" : "") + '> greyed out</label>' +
-        "</div>";
-      }).join("");
-      return '<div class="field"><label>' + escapeHtml(tier) + "</label>" + rows + "</div>";
-    }).join("");
-  }
-
-  function apReadHighlightsEditor() {
-    var grid = [[], [], []];
-    document.querySelectorAll("#apHighlightsGrid .ap-hl-text").forEach(function (input) {
-      var t = +input.dataset.tier, b = +input.dataset.bullet;
-      grid[t][b] = { text: input.value, off: false };
-    });
-    document.querySelectorAll("#apHighlightsGrid .ap-hl-off").forEach(function (cb) {
-      var t = +cb.dataset.tier, b = +cb.dataset.bullet;
-      if (grid[t][b]) grid[t][b].off = cb.checked;
-    });
-    return grid;
-  }
-
-  function apSaveHighlights() {
-    var highlights = apReadHighlightsEditor();
-    confirmDialog("Save this wording for " + TEAM_LABELS[ACTIVE_TEAM] + "? It applies to every future proposal.").then(function (ok) {
-      if (!ok) return;
-      API.put("/api/amc-proposals/highlights", { team: ACTIVE_TEAM, highlights: highlights }).then(function (r) {
-        AP_HIGHLIGHTS = r.highlights;
-        toast("Inclusions wording saved for " + TEAM_LABELS[ACTIVE_TEAM]);
-        apRenderPreview();
-      }).catch(function (err) { toast(err.message || "Could not save"); });
-    });
   }
 
   function apRenderPreview() {
@@ -3467,7 +3419,8 @@
     var type = document.getElementById("apPropType").value;
     var units = parseInt(document.getElementById("apAcUnits").value, 10);
     if (!units) return;
-    var prices = apPriceFor(type, units, apReadOverride());
+    var pendP = pendingWording("proposal");
+    var prices = apPriceFor(type, units, pendP && pendP.overrides ? pendP.overrides : null);
     var highlightsByTier = apCardHighlights(type);
     var html = AP_META.tiers.map(function (tier, i) {
       var annual = prices[i];
@@ -3525,12 +3478,18 @@
       acUnits: parseInt(document.getElementById("apAcUnits").value, 10),
       validityDays: parseInt(document.getElementById("apValidity").value, 10)
     };
-    var override = apReadOverride();
-    if (override) { body.overrideBasic = override[0]; body.overrideStandard = override[1]; body.overridePremium = override[2]; }
     var hint = document.getElementById("apGenerateHint");
+    var customWording = pendingWording("proposal");
+    if (customWording) {
+      body.wording = Object.assign({}, customWording);
+      delete body.wording.overrides;
+      var ov = customWording.overrides;
+      if (ov) { body.overrideBasic = ov[0]; body.overrideStandard = ov[1]; body.overridePremium = ov[2]; }
+    }
     hint.textContent = "Generating…";
     API.post("/api/amc-proposals", body).then(function (p) {
       hint.textContent = "";
+      if (customWording) setPendingWording("proposal", null);
       toast("Proposal generated");
       window.open("/api/amc-proposals/" + p.id + "/pdf", "_blank");
       loadAmcProposalsAll();
@@ -3553,6 +3512,13 @@
     document.getElementById("acPayPlan").value = "onetime";
     if (!document.getElementById("acStartDate").value) document.getElementById("acStartDate").value = todayISO();
     acPendingProposalId = null;
+    var bType = document.getElementById("apPropType").value;
+    var bUnits = parseInt(document.getElementById("apAcUnits").value, 10);
+    var bPend = pendingWording("proposal");
+    var bPrices = apPriceFor(bType, bUnits, bPend && bPend.overrides ? bPend.overrides : null);
+    var bStd = apPriceFor(bType, bUnits, null);
+    AC_PRICE_OVERRIDE = bPrices.some(function (v, i) { return Math.round(v) !== Math.round(bStd[i]); })
+      ? { type: bType, units: bUnits, prices: bPrices, from: "the proposal you're building" } : null;
     acUpdateValueHint();
     apSwitchSubtab("contract");
   }
@@ -3572,6 +3538,8 @@
     document.getElementById("acPayPlan").value = "onetime";
     if (!document.getElementById("acStartDate").value) document.getElementById("acStartDate").value = todayISO();
     acPendingProposalId = proposalId;
+    AC_PRICE_OVERRIDE = { type: p.propertyType, units: p.acUnits, prices: [p.prices.basic, p.prices.standard, p.prices.premium],
+                          from: "the proposal for " + (p.clientName && p.clientName !== "(no name)" ? p.clientName : "this client") };
     acUpdateValueHint();
     apSwitchSubtab("contract");
   }
@@ -3597,9 +3565,6 @@
     if ([].slice.call(validitySel.options).some(function (o) { return o.value === String(p.validityDays); })) {
       validitySel.value = String(p.validityDays);
     }
-    document.getElementById("apOverrideBasic").value = p.isCustom && p.override.basic != null ? p.override.basic : "";
-    document.getElementById("apOverrideStandard").value = p.isCustom && p.override.standard != null ? p.override.standard : "";
-    document.getElementById("apOverridePremium").value = p.isCustom && p.override.premium != null ? p.override.premium : "";
     apUpdateCommCardVisibility();
     apRenderPreview();
     apSwitchSubtab("builder");
@@ -3610,6 +3575,20 @@
   // type + AC units) is the actual UI for choosing a package - the hidden
   // #acPackage select is just where that choice is stored, so acGenerateContract()
   // and every other existing reader of "acPackage".value keeps working unchanged.
+  // Prices quoted on the proposal this contract is being created from (set by "→ Contract").
+  // They apply only while the contract's property type and unit count still match the proposal's.
+  var AC_PRICE_OVERRIDE = null;
+
+  function acEffectivePrices(type, units) {
+    var o = AC_PRICE_OVERRIDE;
+    return (o && o.type === type && o.units === units) ? o.prices.slice() : apPriceFor(type, units, null);
+  }
+
+  function acUsingProposalPrices(type, units) {
+    var o = AC_PRICE_OVERRIDE;
+    return !!(o && o.type === type && o.units === units);
+  }
+
   function acRenderPackagePicker() {
     var wrap = document.getElementById("acPackagePicker");
     if (!wrap || !AP_META) return;
@@ -3618,7 +3597,7 @@
     var current = document.getElementById("acPackage").value;
     wrap.innerHTML = "";
     if (!units) return;
-    var prices = apPriceFor(type, units, null);
+    var prices = acEffectivePrices(type, units);
     AP_META.tiers.forEach(function (tier, i) {
       var btn = document.createElement("button");
       btn.type = "button";
@@ -3643,13 +3622,14 @@
     var hint = document.getElementById("acContractValueHint");
     if (!units) { hint.textContent = ""; return; }
     var tierIdx = AP_META.tiers.indexOf(document.getElementById("acPackage").value);
-    var annual = apPriceFor(type, units, null)[tierIdx];
+    var annual = acEffectivePrices(type, units)[tierIdx];
     var payPlan = document.getElementById("acPayPlan").value;
+    var from = acUsingProposalPrices(type, units) ? '<div style="margin-bottom:4px;color:#8C3007">Prices taken from ' + escapeHtml(AC_PRICE_OVERRIDE.from) + ".</div>" : "";
     if (payPlan === "monthly") {
       var plan = apMonthlyPlan(annual);
-      hint.innerHTML = "<b>Contract value:</b> AED " + plan.deposit.toFixed(2) + " deposit, then AED " + plan.monthly.toFixed(2) + " &times; 11 monthly instalments (AED " + Math.round(plan.planTotal).toLocaleString() + " total, incl. VAT)";
+      hint.innerHTML = from + "<b>Contract value:</b> AED " + plan.deposit.toFixed(2) + " deposit, then AED " + plan.monthly.toFixed(2) + " &times; 11 monthly instalments (AED " + Math.round(plan.planTotal).toLocaleString() + " total, incl. VAT)";
     } else {
-      hint.innerHTML = "<b>Contract value:</b> AED " + Math.round(annual).toLocaleString() + " paid upfront, incl. VAT";
+      hint.innerHTML = from + "<b>Contract value:</b> AED " + Math.round(annual).toLocaleString() + " paid upfront, incl. VAT";
     }
   }
 
@@ -3666,9 +3646,17 @@
       signatory: document.getElementById("acSignatory").value
     };
     if (acPendingProposalId) body.proposalId = acPendingProposalId;
+    var quoted = acEffectivePrices(body.propertyType, body.acUnits)[AP_META.tiers.indexOf(body.package)];
+    var standardPrice = apPriceFor(body.propertyType, body.acUnits, null)[AP_META.tiers.indexOf(body.package)];
+    if (quoted && Math.round(quoted) !== Math.round(standardPrice)) body.annualValue = quoted;
+    var customWording = pendingWording("contract");
+    if (customWording) { body.terms = customWording.terms; body.layout = customWording.layout; }
     var errBox = document.getElementById("acFormErrors");
     errBox.style.display = "none";
     API.post("/api/amc-contracts", body).then(function (c) {
+      AC_PRICE_OVERRIDE = null;
+      acUpdateValueHint();
+      if (customWording) setPendingWording("contract", null);
       toast("Contract generated");
       window.open("/api/amc-contracts/" + c.id + "/pdf", "_blank");
       acPendingProposalId = null;
@@ -3689,6 +3677,8 @@
     document.getElementById("acStartDate").value = "";
     document.getElementById("acSignatory").value = "tegan";
     acPendingProposalId = null;
+    AC_PRICE_OVERRIDE = null;
+    setPendingWording("contract", null);
     acUpdateValueHint();
   }
 
@@ -3711,13 +3701,19 @@
     }).catch(function () { toast("Could not load AMC Proposals data"); });
   }
 
+  function apUploadedBadge(d) {
+    return d.pdfSource === "uploaded"
+      ? ' <span title="' + escapeAttr(d.uploadFilename || "") + '" style="display:inline-block;margin-left:6px;font-size:9px;font-weight:700;color:#8C3007;background:#FEF3EE;border:1px solid #F4B79B;padding:2px 6px;border-radius:10px">Uploaded PDF</span>'
+      : "";
+  }
+
   function apRenderLog() {
     document.getElementById("apCntLog").textContent = AP_PROPOSALS.length;
     document.getElementById("apProposalLogBody").innerHTML = AP_PROPOSALS.map(function (p) {
       var badge = p.convertedToContractId ? ' <span style="display:inline-block;margin-left:6px;font-size:9px;font-weight:700;color:#1A6B3C;background:#EAF7EF;border:1px solid #BEE6CC;padding:2px 6px;border-radius:10px">Converted</span>' : "";
       return "<tr>" +
         "<td>" + apFmtDate(p.createdAt) + "</td>" +
-        "<td>" + escapeHtml(p.clientName || "(no name)") + badge + "</td>" +
+        "<td>" + escapeHtml(p.clientName || "(no name)") + badge + apUploadedBadge(p) + "</td>" +
         "<td>" + escapeHtml(p.propertyAddress || "") + "</td>" +
         "<td>" + AP_META.typeLabel[p.propertyType] + "</td>" +
         "<td>" + p.acUnits + "</td>" +
@@ -3725,10 +3721,12 @@
         "<td>" + Math.round(p.prices.standard).toLocaleString() + "</td>" +
         "<td>" + Math.round(p.prices.premium).toLocaleString() + "</td>" +
         "<td>" + apFmtDate(p.validUntil) + "</td>" +
-        "<td>" + escapeHtml(p.createdByEmail || "") + "</td>" +
+        "<td>" + escapeHtml(p.createdByEmail || "") + (p.revision > 1 ? '<div class="hint" style="margin:2px 0 0">Edited ' + apFmtDate(p.updatedAt) + " (v" + p.revision + ")</div>" : "") + "</td>" +
         '<td style="white-space:nowrap">' +
           '<button class="btn ghost btn-sm" data-dl-proposal="' + p.id + '">Download</button> ' +
           '<button class="btn ghost btn-sm" data-edit-proposal="' + p.id + '">Edit</button> ' +
+          '<button class="btn ghost btn-sm" data-upload-proposal="' + p.id + '" title="Replace this proposal\'s PDF with your own file">Upload PDF</button> ' +
+          '<button class="btn ghost btn-sm" data-dup-proposal="' + p.id + '" title="Load into the Proposal Builder to create a new proposal">Duplicate</button> ' +
           (p.convertedToContractId ? "" : '<button class="btn ghost btn-sm" data-cc-proposal="' + p.id + '">&rarr; Contract</button>') +
         "</td></tr>";
     }).join("") || '<tr><td colspan="11" class="hint">No proposals sent yet.</td></tr>';
@@ -3737,17 +3735,1022 @@
       var sig = (AP_META.signatories[c.signatory] || {}).name || c.signatory;
       return "<tr>" +
         "<td>" + apFmtDate(c.createdAt) + "</td>" +
-        "<td>" + escapeHtml(c.clientName || "") + "</td>" +
+        "<td>" + escapeHtml(c.clientName || "") + apUploadedBadge(c) + "</td>" +
         "<td>" + escapeHtml(c.propertyAddress || "") + "</td>" +
         "<td>" + c.package + "</td>" +
         "<td>" + (c.payPlan === "monthly" ? "Monthly" : "One-time") + "</td>" +
         "<td>" + apFmtDate(c.startDate) + "</td>" +
         "<td>" + escapeHtml(sig) + "</td>" +
         "<td>AED " + Math.round(c.contractValueAnnual).toLocaleString() + "</td>" +
-        "<td>" + escapeHtml(c.createdByEmail || "") + "</td>" +
-        '<td><button class="btn ghost btn-sm" data-dl-contract="' + c.id + '">Download</button></td>' +
+        apPaymentCellHtml(c) +
+        "<td>" + escapeHtml(c.createdByEmail || "") + (c.revision > 1 ? '<div class="hint" style="margin:2px 0 0">Edited ' + apFmtDate(c.updatedAt) + " (v" + c.revision + ")</div>" : "") + "</td>" +
+        '<td style="white-space:nowrap"><button class="btn ghost btn-sm" data-dl-contract="' + c.id + '">Download</button> ' +
+          '<button class="btn ghost btn-sm" data-edit-contract="' + c.id + '">Edit</button> ' +
+          '<button class="btn ghost btn-sm" data-upload-contract="' + c.id + '" title="Replace this contract\'s PDF with your own file">Upload PDF</button></td>' +
         "</tr>";
-    }).join("") || '<tr><td colspan="10" class="hint">No contracts issued yet.</td></tr>';
+    }).join("") || '<tr><td colspan="11" class="hint">No contracts issued yet.</td></tr>';
+  }
+
+  // ------------------------------------------------------------------
+  // Contracts issued: inline payments + full contract editor
+  // ------------------------------------------------------------------
+  function apPaymentCellHtml(c) {
+    var due = c.balance > 0;
+    return '<td class="ap-pay-cell" data-pay-id="' + c.id + '">' +
+      '<select class="ap-pay-status">' + ["Unpaid", "Partial", "Paid"].map(function (s) {
+        return '<option' + (s === c.payStatus ? " selected" : "") + ">" + s + "</option>";
+      }).join("") + "</select>" +
+      '<input type="number" class="ap-pay-amt" min="0" step="any" placeholder="Received (AED)" value="' + (c.amountReceived || "") + '">' +
+      '<input type="text" class="ap-pay-notes" maxlength="500" placeholder="Notes" value="' + escapeAttr(c.payNotes) + '">' +
+      '<div class="ap-pay-bal' + (due ? " due" : "") + '">' + apBalanceText(c) + "</div></td>";
+  }
+
+  function apBalanceText(c) {
+    return c.balance > 0 ? "Balance AED " + Math.round(c.balance).toLocaleString() + " of " + Math.round(c.amountPayable).toLocaleString()
+                         : "Settled — AED " + Math.round(c.amountPayable).toLocaleString();
+  }
+
+  function apSavePayment(cell, changed) {
+    var c = AP_CONTRACTS.filter(function (x) { return x.id === cell.dataset.payId; })[0];
+    if (!c) return;
+    var statusEl = cell.querySelector(".ap-pay-status");
+    var amtEl = cell.querySelector(".ap-pay-amt");
+    var notesEl = cell.querySelector(".ap-pay-notes");
+    var amt = parseFloat(amtEl.value) || 0;
+    if (amt < 0) { toast("Amount received can't be negative"); return; }
+    if (changed === "amt") {
+      statusEl.value = amt <= 0 ? "Unpaid" : (amt >= c.amountPayable ? "Paid" : "Partial");
+    } else if (changed === "status" && statusEl.value === "Paid" && amt < c.amountPayable) {
+      amt = c.amountPayable;
+      amtEl.value = amt;
+    }
+    API.put("/api/amc-contracts/" + c.id + "/payments", {
+      payStatus: statusEl.value, amountReceived: amt, payNotes: notesEl.value
+    }).then(function (u) {
+      Object.assign(c, u);
+      var bal = cell.querySelector(".ap-pay-bal");
+      bal.textContent = apBalanceText(c);
+      bal.classList.toggle("due", c.balance > 0);
+      cell.classList.add("saved");
+      setTimeout(function () { cell.classList.remove("saved"); }, 900);
+    }).catch(function (err) { toast(err.message || "Could not save payment"); });
+  }
+
+  // ------------------------------------------------------------------
+  // Shared editor for contracts and proposals.
+  //   mode "doc":      edits one issued contract/proposal (details + wording)
+  //   mode "template": edits the team's standard wording used by all future ones
+  // Saving a doc asks whether the change is for this document only (the
+  // standard stays as it was) or should also become the standard.
+  // ------------------------------------------------------------------
+  var CE = null;
+  var CE_BLOCK_LABELS = {
+    title: "Page title", heading: "Heading", subheading: "Sub-heading", p: "Paragraph", callout: "Highlighted note",
+    bullets: "Bullet list", numbered: "Numbered list", definitions: "Definitions", checklist: "Checklist box",
+    table: "Table", pagebreak: "Page break", signature: "Signature block"
+  };
+
+  function ceNewBlock(type) {
+    switch (type) {
+      case "bullets": case "numbered": return { type: type, items: [""] };
+      case "definitions": return { type: type, items: [["Term", "Description"]] };
+      case "checklist": return { type: type, title: "", items: [""] };
+      case "table": return { type: type, header: ["Item", "Details"], rows: [["", ""]] };
+      case "pagebreak": case "signature": return { type: type };
+      default: return { type: type, text: "" };
+    }
+  }
+
+  // Resolves "this" | "all" | null (keep editing).
+  function askSaveScope(noun, canAll, builder) {
+    return new Promise(function (resolve) {
+      var overlay = document.getElementById("scopeOverlay");
+      var thisBtn = document.getElementById("scopeThis");
+      var allBtn = document.getElementById("scopeAll");
+      var backBtn = document.getElementById("scopeBack");
+      var Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
+      if (builder) {
+        document.getElementById("scopeMessage").textContent = "Use this wording for just this " + noun + ", or make it the standard for all future " + noun + "s?";
+        document.getElementById("scopeSub").textContent = "\"Only this " + noun + "\" applies it to the " + noun + " you're building now. The standard wording stays as it is." +
+          (noun === "proposal" ? " Prices you changed always apply to this proposal only." : "");
+        thisBtn.innerHTML = "No — only this " + noun + "<small>Used for the " + noun + " you generate next. The standard wording is not changed.</small>";
+        allBtn.innerHTML = "Yes — make it the standard for all future " + noun + "s<small>" +
+          (canAll ? Noun + "s already issued aren't changed." : "Admins only — ask an admin to change the standard wording.") + "</small>";
+      } else {
+        document.getElementById("scopeMessage").textContent = "Save these changes for this " + noun + " only, or for all future " + noun + "s too?";
+        document.getElementById("scopeSub").textContent = "Details such as the client, price and dates always apply to this " + noun + " only. The wording can also become the standard that every new " + noun + " starts from.";
+        thisBtn.innerHTML = "This " + noun + " only<small>The standard wording stays exactly as it is. The version being replaced is kept.</small>";
+        allBtn.innerHTML = "Save for all future " + noun + "s too<small>" +
+          (canAll ? "This " + noun + " is updated and the wording becomes the new standard. " + Noun + "s already issued aren't changed."
+                  : "Admins only — ask an admin to change the standard wording.") + "</small>";
+      }
+      allBtn.disabled = !canAll;
+      overlay.classList.add("show");
+      function done(result) {
+        overlay.classList.remove("show");
+        thisBtn.removeEventListener("click", onThis); allBtn.removeEventListener("click", onAll); backBtn.removeEventListener("click", onBack);
+        resolve(result);
+      }
+      function onThis() { done("this"); }
+      function onAll() { done("all"); }
+      function onBack() { done(null); }
+      thisBtn.addEventListener("click", onThis); allBtn.addEventListener("click", onAll); backBtn.addEventListener("click", onBack);
+    });
+  }
+
+  function ceOpenEditor(contractId) {
+    API.get("/api/amc-contracts/" + contractId).then(function (d) {
+      CE = { kind: "contract", mode: "doc", id: contractId, doc: d.contract, terms: d.terms, autoTables: d.autoTables, tokens: d.tokens,
+             revisions: d.revisions, valueText: d.valueTextOverride, dirty: false, lastStd: null,
+             layout: d.layout || {}, layoutDefaults: d.layoutDefaults, layoutLabels: d.layoutLabels };
+      ceBuild();
+    }).catch(function () { toast("Could not load contract"); });
+  }
+
+  function ceOpenProposalEditor(proposalId) {
+    API.get("/api/amc-proposals/" + proposalId).then(function (d) {
+      CE = { kind: "proposal", mode: "doc", id: proposalId, doc: d.proposal, wording: d.wording, tokens: d.tokens,
+             revisions: d.revisions, dirty: false, lastStd: null,
+             layout: (d.wording && d.wording.layout) || {}, layoutDefaults: d.layoutDefaults, layoutLabels: d.layoutLabels,
+             highlights: JSON.parse(JSON.stringify(d.highlights)),
+             comparison: JSON.parse(JSON.stringify(d.comparison)), included: d.included || null, includedAuto: d.autoIncluded };
+      ceBuild();
+    }).catch(function () { toast("Could not load proposal"); });
+  }
+
+  // Wording chosen with "only this proposal/contract" in a Builder: held here and sent
+  // with the next Generate, then cleared. It never touches the team's standard.
+  var PENDING = { proposal: null, contract: null };
+
+  function pendingWording(kind) {
+    var p = PENDING[kind];
+    if (p && p.team !== ACTIVE_TEAM) { PENDING[kind] = null; p = null; }
+    return p ? p.data : null;
+  }
+
+  function setPendingWording(kind, data) {
+    PENDING[kind] = data ? { team: ACTIVE_TEAM, data: data } : null;
+    updatePendingBanners();
+    if (kind === "proposal") apRenderPreview();
+  }
+
+  function updatePendingBanners() {
+    [["proposal", "apPendingBanner", "proposal"], ["contract", "acPendingBanner", "contract"]].forEach(function (x) {
+      var el = document.getElementById(x[1]);
+      if (!el) return;
+      var on = !!pendingWording(x[0]);
+      el.style.display = on ? "" : "none";
+      var pw = pendingWording(x[0]);
+      var withPrices = !!(pw && pw.overrides && pw.overrides.some(function (o) { return o != null; }));
+      el.innerHTML = on ? "Custom wording" + (withPrices ? " and prices" : "") + " will be used for the " + x[2] + " you generate next — the standard is unchanged. " +
+        '<a href="#" data-clear-pending="' + x[0] + '">Clear</a>' : "";
+    });
+  }
+
+  function ceOpenTemplate(kind) {
+    var url = kind === "contract" ? "/api/amc-contracts/default-terms?team=" : "/api/amc-proposals/default-wording?team=";
+    var val = function (id) { var el = document.getElementById(id); return el ? el.value : ""; };
+    var builder = kind === "contract"
+      ? { clientName: val("acClientName").trim(), propertyAddress: val("acPropAddr").trim(), propertyType: val("acPropType"),
+          acUnits: parseInt(val("acAcUnits"), 10), package: val("acPackage") || "Basic", payPlan: val("acPayPlan"),
+          startDate: val("acStartDate"), signatory: val("acSignatory") }
+      : { clientName: val("apClientName").trim(), propertyAddress: val("apPropAddr").trim(), propertyType: val("apPropType"),
+          acUnits: parseInt(val("apAcUnits"), 10), validityDays: parseInt(val("apValidity"), 10) || 30 };
+    Promise.all([API.get(url + encodeURIComponent(ACTIVE_TEAM)), apLoadSavedPriceFor(builder.propertyType, builder.acUnits)]).then(function (res) {
+      var d = res[0];
+      CE = { kind: kind, mode: "template", id: null, terms: d.terms, wording: d.wording, tokens: d.tokens, autoTables: {},
+             revisions: [], dirty: false,
+             layout: kind === "contract" ? (d.layout || {}) : ((d.wording && d.wording.layout) || {}),
+             layoutDefaults: d.layoutDefaults, layoutLabels: d.layoutLabels,
+             highlights: kind === "proposal" ? JSON.parse(JSON.stringify(d.highlights)) : null,
+             comparison: kind === "proposal" ? JSON.parse(JSON.stringify(d.comparison)) : null,
+             included: kind === "proposal" ? (d.included || null) : null, includedAuto: d.autoIncluded, builder: builder };
+      var pend = pendingWording(kind);   // reopening continues from the custom wording, not the standard
+      if (pend) {
+        var copy = JSON.parse(JSON.stringify(pend));
+        if (kind === "contract") { CE.terms = copy.terms; CE.layout = copy.layout || {}; }
+        else {
+          CE.wording = { terms: copy.terms, note: copy.note }; CE.layout = copy.layout || {};
+          CE.highlights = copy.highlights || CE.highlights; CE.comparison = copy.comparison || CE.comparison; CE.included = copy.included || null;
+        }
+      }
+      ceBuild();
+    }).catch(function () { toast("Could not load the standard wording"); });
+  }
+
+  // The editor works on an issued document (CE.doc, with type/units selects), or on the one
+  // being built in a Builder (CE.builder, whose details come from the Builder's form).
+  function ceTypeVal() {
+    var s = document.getElementById("ceType");
+    return s ? s.value : (CE.doc ? CE.doc.propertyType : (CE.builder ? CE.builder.propertyType : "apartment"));
+  }
+  function ceUnitsVal() {
+    var s = document.getElementById("ceUnits");
+    return s ? parseInt(s.value, 10) : (CE.doc ? CE.doc.acUnits : (CE.builder ? CE.builder.acUnits : 2));
+  }
+  function ceTeamVal() { return CE.doc ? CE.doc.team : ACTIVE_TEAM; }
+  function ceHasPrices() { return CE.kind === "proposal" && (CE.mode === "doc" || !!CE.builder); }
+
+  function ceStdPrices() {
+    return apPriceFor(ceTypeVal(), ceUnitsVal(), null);
+  }
+
+  function ceCurrentPrices() {
+    var v = function (n) { var x = parseFloat(document.getElementById("cePrice" + n).value); return x > 0 ? x : 0; };
+    return { basic: v("Basic"), standard: v("Standard"), premium: v("Premium") };
+  }
+
+  // Price overrides vs the standard, as the Builder's Generate expects them (null = use the standard).
+  function ceOverrides() {
+    var std = ceStdPrices();
+    var cur = ceCurrentPrices();
+    return [cur.basic, cur.standard, cur.premium].map(function (v, i) { return (v > 0 && Math.round(v) !== Math.round(std[i])) ? v : null; });
+  }
+
+  // Keeps the price inputs following the standard price for the chosen
+  // type/units/package, unless the user has typed their own figure.
+  function ceRefreshStdPrice(forceApply) {
+    var type = ceTypeVal();
+    var units = ceUnitsVal();
+    return apLoadSavedPriceFor(type, units).then(function () {
+      var std = ceStdPrices();
+      if (CE.kind === "contract") {
+        var tierIdx = AP_META.tiers.indexOf(document.getElementById("cePackage").value);
+        var input = document.getElementById("ceAnnual");
+        var prev = CE.lastStd;
+        if (forceApply || prev == null || Math.round(+input.value) === Math.round(prev)) input.value = std[tierIdx];
+        CE.lastStd = std[tierIdx];
+        document.getElementById("ceStdHint").textContent = "Standard price for this package: AED " + Math.round(std[tierIdx]).toLocaleString();
+      } else {
+        ["Basic", "Standard", "Premium"].forEach(function (name, i) {
+          var input = document.getElementById("cePrice" + name);
+          var prev = CE.lastStd && CE.lastStd[i];
+          if (forceApply || prev == null || Math.round(+input.value) === Math.round(prev)) input.value = std[i];
+        });
+        CE.lastStd = std.slice();
+        document.getElementById("ceStdHint").textContent = "Standard prices: AED " + std.map(function (v) { return Math.round(v).toLocaleString(); }).join(" / ");
+      }
+      ceUpdatePaySummary();
+    });
+  }
+
+  function ceLayoutKeys() {
+    return CE.kind === "contract"
+      ? ["eyebrow", "titleA", "titleB", "strap", "tagline", "footer", "providerEntity"]
+      : ["eyebrow", "titleA", "titleB", "strap", "quote", "quoteAttrib", "tagline", "footer", "inclTitle", "cmpTitle", "cmpStrap",
+         "payTitle", "payStrap", "payRowUpfront", "payRowDeposit", "payRowInstal", "payRowTotal"];
+  }
+
+  function ceTypeKey() {
+    return ceTypeVal() === "commercial" ? "commercial" : "residential";
+  }
+
+  // Cover/page text inputs for the given layout keys (ids stay ceLay_<key>).
+  function ceLayoutFields(keys) {
+    var defs = CE.layoutDefaults[ceTypeKey()];
+    var cur = Object.assign({}, defs, CE.layout || {});
+    var long = { strap: 1, quote: 1 };
+    return '<div class="grid cols2">' + keys.map(function (k) {
+      var label = escapeHtml(CE.layoutLabels[k] || k);
+      var field = long[k]
+        ? '<textarea id="ceLay_' + k + '" rows="2" style="width:100%;box-sizing:border-box">' + escapeHtml(cur[k]) + "</textarea>"
+        : '<input type="text" id="ceLay_' + k + '" value="' + escapeAttr(cur[k]) + '">';
+      return '<div class="field"' + (long[k] ? ' style="grid-column:1/-1"' : "") + "><label>" + label + "</label>" + field + "</div>";
+    }).join("") + "</div>";
+  }
+
+  // One editor section, tagged with where it appears in the PDF.
+  function ceSection(tag, title, inner, hint) {
+    return '<div class="ce-section"><h4><span class="ce-pg">' + escapeHtml(tag) + "</span>" + escapeHtml(title) + "</h4>" +
+      (hint ? '<p class="hint" style="margin:0 0 10px">' + hint + "</p>" : "") + inner + "</div>";
+  }
+
+  // When the property type changes, any layout text still at the old
+  // standard follows the new type's standard (e.g. "Commercial Maintenance Contract").
+  function ceSyncLayoutDefaults() {
+    var defs = CE.layoutDefaults[ceTypeKey()];
+    ceLayoutKeys().forEach(function (k) {
+      var el = document.getElementById("ceLay_" + k);
+      if (el && el.value === CE.layoutPrev[k]) el.value = defs[k];
+    });
+    CE.layoutPrev = defs;
+  }
+
+  // Only text that differs from the standard is stored; the rest stays automatic.
+  function ceCurrentLayout() {
+    var defs = CE.layoutDefaults[ceTypeKey()];
+    var out = {};
+    ceLayoutKeys().forEach(function (k) {
+      var el = document.getElementById("ceLay_" + k);
+      if (el && el.value.trim() !== "" && el.value !== defs[k]) out[k] = el.value;
+    });
+    return out;
+  }
+
+  function ceApplyLayout(overrides) {
+    var defs = CE.layoutDefaults[ceTypeKey()];
+    var cur = Object.assign({}, defs, overrides || {});
+    ceLayoutKeys().forEach(function (k) { var el = document.getElementById("ceLay_" + k); if (el) el.value = cur[k]; });
+  }
+
+  // Admin-only and residential-only (commercial pricing is rate-based): replaces the
+  // team's standard Basic/Standard/Premium price for this property type + unit count.
+  function ceUpdateStdPriceBtn() {
+    var btn = document.getElementById("ceSaveStdPrice");
+    if (!btn) return;
+    btn.style.display = (CURRENT_USER_ROLE === "admin" && ceTypeVal() !== "commercial") ? "" : "none";
+  }
+
+  function ceSaveStdPrice() {
+    var type = ceTypeVal();
+    var units = ceUnitsVal();
+    if (type === "commercial" || !units) return;
+    var prices = ["Basic", "Standard", "Premium"].map(function (n) { return parseFloat(document.getElementById("cePrice" + n).value); });
+    if (prices.some(function (p) { return !(p > 0); })) { toast("Enter all three prices first"); return; }
+    var label = TEAM_LABELS[ceTeamVal()] + " " + AP_META.typeLabel[type] + " (" + units + " unit" + (units === 1 ? "" : "s") + ")";
+    confirmDialog("Save AED " + prices.map(function (p) { return Math.round(p).toLocaleString(); }).join(" / ") + " as the new standard Basic/Standard/Premium price for " + label +
+      "? This replaces the default for every future proposal and contract — not just this one.", { confirmLabel: "Save as standard" }).then(function (ok) {
+      if (!ok) return;
+      API.put("/api/amc-proposals/prices", { team: ceTeamVal(), propertyType: type, units: units, basic: prices[0], standard: prices[1], premium: prices[2] })
+        .then(function (r) {
+          AP_SAVED_PRICE_CACHE[apSavedPriceKey(type, units)] = r.saved;
+          CE.lastStd = prices.slice();
+          document.getElementById("ceStdHint").textContent = "Standard prices: AED " + prices.map(function (v) { return Math.round(v).toLocaleString(); }).join(" / ");
+          toast("Saved as the new standard price for " + TEAM_LABELS[ceTeamVal()]);
+          acUpdateValueHint();
+          apRenderPreview();
+        }).catch(function (err) { toast(err.message || "Could not save price"); });
+    });
+  }
+
+  function ceOptions(list, sel) {
+    return list.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === sel ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
+  }
+
+  function ceHighlightsGridHtml() {
+    return AP_META.tiers.map(function (tier, ti) {
+      return '<div><div class="ce-hl-tier">' + escapeHtml(tier) + "</div>" + CE.highlights[ti].map(function (b, bi) {
+        return '<div class="ce-hl-row"><input type="text" data-hl="text" data-t="' + ti + '" data-b="' + bi + '" value="' + escapeAttr(b.text) + '">' +
+          '<label><input type="checkbox" data-hl="off" data-t="' + ti + '" data-b="' + bi + '"' + (b.off ? " checked" : "") + "> greyed out</label></div>";
+      }).join("") + "</div>";
+    }).join("");
+  }
+
+  function ceTokenList() {
+    return Object.keys(CE.tokens).map(function (k) { return "<code>{{" + k + "}}</code> " + escapeHtml(CE.tokens[k]); }).join(" &nbsp;·&nbsp; ");
+  }
+
+  function ceCommonFields() {
+    var c = CE.doc;
+    var typeOpts = AP_META.propertyTypes.map(function (t) { return [t, AP_META.typeLabel[t]]; });
+    return '<div class="field"><label>Client name</label><input type="text" id="ceClient" value="' + escapeAttr(c.clientName) + '"></div>' +
+      '<div class="field"><label>Property / unit</label><input type="text" id="ceAddr" value="' + escapeAttr(c.propertyAddress || "") + '"></div>' +
+      '<div class="field"><label>Property type</label><select id="ceType">' + ceOptions(typeOpts, c.propertyType) + "</select></div>" +
+      '<div class="field"><label>AC units</label><select id="ceUnits"></select></div>';
+  }
+
+  // Read-only table of what the client pays, recalculated from the price fields as you type.
+  function ceUpdatePaySummary() {
+    var el = document.getElementById("cePaySummary");
+    if (!el || !CE || !(CE.mode === "doc" || CE.builder)) return;
+    var m0 = function (n) { return "AED " + Math.round(n).toLocaleString(); };
+    var m2 = function (n) { return "AED " + n.toLocaleString("en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    var num = function (id) { var v = parseFloat(document.getElementById(id).value); return v > 0 ? v : 0; };
+    var rows;
+    if (CE.kind === "proposal") {
+      var prices = ["Basic", "Standard", "Premium"].map(function (n) { return num("cePrice" + n); });
+      var plans = prices.map(apMonthlyPlan);
+      rows = '<tr><th></th>' + AP_META.tiers.map(function (t) { return "<th>" + t + "</th>"; }).join("") + "</tr>" +
+        "<tr><td>Paid upfront — total for the year</td>" + prices.map(function (p) { return "<td>" + m0(p) + "</td>"; }).join("") + "</tr>" +
+        "<tr><td>Monthly plan — deposit</td>" + plans.map(function (p) { return "<td>" + m2(p.deposit) + "</td>"; }).join("") + "</tr>" +
+        "<tr><td>Monthly plan — " + AP_META.instalments + " instalments of</td>" + plans.map(function (p) { return "<td>" + m2(p.monthly) + "</td>"; }).join("") + "</tr>" +
+        "<tr><td>Monthly plan — total for the year</td>" + plans.map(function (p) { return "<td>" + m0(p.planTotal) + "</td>"; }).join("") + "</tr>";
+    } else {
+      var annual = num("ceAnnual");
+      var plan = apMonthlyPlan(annual);
+      rows = document.getElementById("cePayPlan").value === "monthly"
+        ? "<tr><td>Monthly Plan — deposit (25%)</td><td>" + m2(plan.deposit) + "</td></tr>" +
+          "<tr><td>Monthly Plan — " + AP_META.instalments + " instalments of</td><td>" + m2(plan.monthly) + "</td></tr>" +
+          "<tr><td>Monthly Plan — total for the year (incl. 8% markup)</td><td>" + m0(plan.planTotal) + "</td></tr>"
+        : "<tr><td>One-Time Payment — total for the year</td><td>" + m0(annual) + "</td></tr>";
+    }
+    el.innerHTML = "<table class=\"ce-table\">" + rows + "</table>";
+  }
+
+  // ---- sections, in the same order they appear in the PDF ----
+  function ceCmpGridHtml() {
+    return '<div class="ce-cmp-row ce-cmp-head"><span>Service</span><span>Basic</span><span>Standard</span><span>Premium</span><span></span></div>' +
+      CE.comparison.map(function (r, ri) {
+        return '<div class="ce-cmp-row">' + r.map(function (c, ci) {
+          return '<input type="text" data-cmp="' + ri + ":" + ci + '" value="' + escapeAttr(c) + '">';
+        }).join("") + '<button type="button" data-cmp-del="' + ri + '" title="Delete row">&times;</button></div>';
+      }).join("");
+  }
+
+  function ceIncludedInitialType() { return ceTypeVal(); }
+  function ceIncludedTypeKey() { return ceTypeVal(); }
+
+  // Only an edited list is stored; left as-is it keeps adapting to the property type.
+  function ceCurrentIncluded() {
+    var el = document.getElementById("ceIncluded");
+    if (!el) return null;
+    var lines = ceLines(el.value);
+    return JSON.stringify(lines) === JSON.stringify(CE.includedAuto[ceIncludedTypeKey()]) ? null : lines;
+  }
+
+  function ceSyncIncludedDefaults() {
+    var el = document.getElementById("ceIncluded");
+    if (!el) return;
+    var next = CE.includedAuto[ceIncludedTypeKey()];
+    if (JSON.stringify(ceLines(el.value)) === JSON.stringify(CE.includedPrevAuto)) el.value = next.join("\n");
+    CE.includedPrevAuto = next;
+  }
+
+  function ceProposalSections() {
+    var isDoc = CE.mode === "doc";
+    var hasPrices = ceHasPrices();
+    var c = CE.doc;
+    var b = CE.builder;
+    var priceInit;
+    if (isDoc) priceInit = [c.prices.basic, c.prices.standard, c.prices.premium];
+    else if (b) {
+      var std0 = apPriceFor(b.propertyType, b.acUnits, null);
+      var pend0 = pendingWording("proposal");
+      priceInit = std0.map(function (v, i) { return pend0 && pend0.overrides && pend0.overrides[i] != null ? pend0.overrides[i] : v; });
+    }
+    var out = "";
+    out += ceSection("Page 1", "Cover", ceLayoutFields(["eyebrow", "titleA", "titleB", "strap"]) +
+      (isDoc ? '<div class="grid cols3" style="margin-top:6px">' + ceCommonFields() +
+        '<div class="field"><label>Valid until</label><input type="date" id="ceValidUntil" value="' + escapeAttr(c.validUntil) + '"></div></div>'
+        : (b ? '<p class="hint" style="margin:8px 0 0">Prepared for <b>' + escapeHtml(b.clientName || "(client name not entered yet)") + "</b> — " +
+            escapeHtml(AP_META.typeLabel[b.propertyType]) + ", " + b.acUnits + " AC unit" + (b.acUnits === 1 ? "" : "s") +
+            ". These come from the Proposal Builder; change them there.</p>" : "")),
+      isDoc ? "Title block, then the Prepared for / Property / Type / AC units strip." : "Title block at the top of the first page.");
+    out += ceSection("Page 1", hasPrices ? "Package cards — prices & inclusions" : "Package cards — inclusions",
+      (hasPrices ? '<div class="ce-prices">' + ["Basic", "Standard", "Premium"].map(function (n, i) {
+          return '<div class="field"><label>' + n + " price (AED, incl. VAT)</label>" +
+            '<input type="number" id="cePrice' + n + '" min="1" step="1" value="' + priceInit[i] + '"></div>';
+        }).join("") + '</div><div class="hint" id="ceStdHint" style="margin:3px 0 0"></div>' +
+        '<button type="button" class="btn ghost btn-sm" id="ceSaveStdPrice" style="margin:8px 0 14px;display:none">Save these prices as the standard for this property type &amp; unit count</button>' +
+        (isDoc ? "" : '<p class="hint" style="margin:0 0 14px">Prices you change here apply to the proposal you generate next. Use the button above to change the standard prices instead.</p>') : "") +
+      '<div class="field"><label>Package inclusions wording</label>' +
+      '<p class="hint" style="margin:0 0 8px">The bullets under each price. Use <code>{callouts}</code> to auto-insert this property type\'s real call-out count. Tick "greyed out" for items a package doesn\'t include.</p>' +
+      '<div class="ce-hl-grid" id="ceHlGrid">' + ceHighlightsGridHtml() + "</div></div>");
+    out += ceSection("Page 1", "Included in every package",
+      ceLayoutFields(["inclTitle"]) +
+      '<div class="field" style="margin-top:6px"><label>Items — one per line (shown in two columns)</label>' +
+      '<textarea id="ceIncluded" rows="8" style="width:100%;box-sizing:border-box">' +
+      escapeHtml((CE.included || CE.includedAuto[ceIncludedInitialType()]).join("\n")) + "</textarea></div>",
+      "Left as it is, this list adapts to the property type (villas add water tank cleaning, commercial adds outside-hours scheduling)." +
+      (isDoc ? "" : " Editing it here applies to every property type."));
+    out += ceSection("Page 2", "What each package covers",
+      ceLayoutFields(["cmpTitle", "cmpStrap"]) +
+      '<div class="ce-cmp" id="ceCmpGrid" style="margin-top:6px">' + ceCmpGridHtml() + "</div>" +
+      '<div style="margin-top:8px"><button type="button" class="btn ghost btn-sm" id="ceCmpAdd">+ Add row</button></div>',
+      "The comparison table. <code>{callouts}</code> in the Basic or Standard column inserts that package's real call-out count for the property type.");
+    out += ceSection("Page 2", "Payment options",
+      ceLayoutFields(["payTitle", "payStrap", "payRowUpfront", "payRowDeposit", "payRowInstal", "payRowTotal"]) +
+      (hasPrices ? '<div style="margin-top:8px"><div class="ce-sub" style="font-size:11px;color:var(--muted);margin-bottom:4px">The figures are calculated from the prices above</div><div id="cePaySummary"></div></div>' : ""),
+      "Headings and row labels are editable; the amounts are always worked out from the package prices.");
+    out += ceSection("Page 2", "Terms & note",
+      '<p class="ce-token-list">Placeholders that fill in automatically: ' + ceTokenList() + "</p>" +
+      '<div class="field"><label>Terms — one per line (numbered automatically)</label><textarea id="ceTerms" rows="9" style="width:100%;box-sizing:border-box">' +
+        escapeHtml(CE.wording.terms.join("\n")) + "</textarea></div>" +
+      '<div class="field" style="margin-top:10px"><label>"Please note" box</label><textarea id="ceNote" rows="4" style="width:100%;box-sizing:border-box">' +
+        escapeHtml(CE.wording.note) + "</textarea></div>" +
+      '<div style="margin-top:10px"><button type="button" class="btn ghost btn-sm" id="ceResetTerms">Reset wording &amp; cover text to the standard</button></div>',
+      "<b>**bold**</b> makes text bold.");
+    out += ceSection("Page 2", "Closing quote", ceLayoutFields(["quote", "quoteAttrib"]));
+    out += ceSection("Every page", "Header & footer", ceLayoutFields(["tagline", "footer"]));
+    return out;
+  }
+
+  function ceContractSections() {
+    var isDoc = CE.mode === "doc";
+    var c = CE.doc;
+    var out = "";
+    out += ceSection("Page 1", "Cover", ceLayoutFields(["eyebrow", "titleA", "titleB", "strap"]) +
+      (isDoc ? '<div class="grid cols3" style="margin-top:6px">' + ceCommonFields() +
+        '<div class="field"><label>Package</label><select id="cePackage">' + ceOptions(AP_META.tiers.map(function (t) { return [t, t]; }), c.package) + "</select></div>" +
+        '<div class="field"><label>Payment plan</label><select id="cePayPlan">' + ceOptions([["onetime", "One-Time Payment"], ["monthly", "Monthly Plan"]], c.payPlan) + "</select></div>" +
+        '<div class="field"><label>Start date</label><input type="date" id="ceStart" value="' + escapeAttr(c.startDate) + '"></div>' +
+        '<div class="field"><label>Contract date</label><input type="date" id="ceContractDate" value="' + escapeAttr(c.contractDate) + '"></div></div>' : ""),
+      isDoc ? "Title block, the dates top-right, then the customer / property / package strip." : "Title block at the top of the first page.");
+    if (isDoc) {
+      out += ceSection("Page 1", "Contract value (prices)",
+        '<div class="grid cols2"><div class="field"><label>Annual value (AED, incl. VAT) <a href="#" id="ceResetPrice" style="font-weight:600;margin-left:6px">reset to standard</a></label>' +
+          '<input type="number" id="ceAnnual" min="1" step="1" value="' + c.contractValueAnnual + '"><div class="hint" id="ceStdHint" style="margin:3px 0 0"></div></div>' +
+          '<div class="field"><label>Contract value line on the cover (optional)</label>' +
+          '<input type="text" id="ceValueText" maxlength="500" placeholder="Leave blank to generate it from the plan and value" value="' + escapeAttr(CE.valueText) + '"></div></div>' +
+        '<div style="margin-top:8px"><div class="ce-sub" style="font-size:11px;color:var(--muted);margin-bottom:4px">Calculated from the value and payment plan (used in the payment terms table)</div><div id="cePaySummary"></div></div>',
+        "The CONTRACT VALUE box on the cover.");
+    }
+    out += ceSection("Pages 1–9", "Contract wording",
+      '<p class="ce-token-list">Placeholders that fill in automatically: ' + ceTokenList() + "</p>" +
+      '<div id="ceBlocks"></div>' +
+      '<div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
+        '<select id="ceAddType">' + Object.keys(CE_BLOCK_LABELS).filter(function (t) { return t !== "signature"; }).map(function (t) {
+          return '<option value="' + t + '">' + CE_BLOCK_LABELS[t] + "</option>"; }).join("") + "</select>" +
+        '<button type="button" class="btn ghost btn-sm" id="ceAddBlock">+ Add block at end</button>' +
+        '<button type="button" class="btn ghost btn-sm" id="ceResetTerms">Reset wording &amp; cover text to the standard</button>' +
+      "</div>",
+      "Everything after the cover details, in page order: change any clause, add or delete blocks, reorder with the arrows, add page breaks. " +
+      "<b>**bold**</b> makes text bold; tables marked <i>automatic</i> recalculate from the contract details.");
+    var sig = Object.keys(AP_META.signatories).map(function (k) { return [k, AP_META.signatories[k].name]; });
+    out += ceSection("Last page", "Signature",
+      '<div class="grid cols2">' + (isDoc ? '<div class="field"><label>Signed for handyman.ae by</label><select id="ceSignatory">' + ceOptions(sig, c.signatory) + "</select></div>" : "") +
+      "</div>" + ceLayoutFields(["providerEntity"]));
+    out += ceSection("Every page", "Header & footer", ceLayoutFields(["tagline", "footer"]));
+    return out;
+  }
+
+  function ceBuild() {
+    var isDoc = CE.mode === "doc";
+    var noun = CE.kind;
+    document.getElementById("ceTitle").textContent = isDoc
+      ? "Edit " + noun + " — " + CE.doc.clientName
+      : "Edit " + noun + " wording";
+    var revs = "";
+    if (isDoc) {
+      var base = CE.kind === "contract" ? "/api/amc-contracts/" : "/api/amc-proposals/";
+      revs = '<div class="ce-section"><h4>Previous versions</h4><div class="ce-revs">' + (CE.revisions.length
+        ? CE.revisions.map(function (r) {
+            return '<a href="' + base + CE.id + "/revisions/" + r.revision + '/pdf" target="_blank">Version ' + r.revision +
+                   " (replaced " + apFmtDate(r.savedAt) + " by " + escapeHtml(r.savedByEmail) + ")</a>";
+          }).join("")
+        : '<span class="hint">This is the original version — no earlier versions yet.</span>') + "</div></div>";
+    }
+    var notice = "";
+    if (isDoc && CE.doc.pdfSource === "uploaded") {
+      notice = '<div class="amc-form-errors" style="display:block;margin-bottom:14px;background:#FEF3EE;border-color:#F4B79B">' +
+        "This " + noun + "'s PDF is currently an <b>uploaded file</b> (" + escapeHtml(CE.doc.uploadFilename || "uploaded.pdf") + "). " +
+        "Saving here regenerates the PDF from the details below and replaces the upload — the upload is kept as an earlier version.</div>";
+    }
+    var uploadBtn = isDoc ? '<div class="ce-section"><h4>Or upload your own PDF</h4><p class="hint" style="margin-bottom:8px">Edited the PDF elsewhere (Word, Acrobat…)? Upload it to replace this ' + noun +
+      "'s PDF exactly as it is. Only this " + noun + " changes; the current version is kept as an earlier version.</p>" +
+      '<button type="button" class="btn ghost btn-sm" id="ceUploadPdf">Upload a PDF instead…</button></div>' : "";
+    document.getElementById("ceBody").innerHTML = "";  // drop the previous editor so ceTypeKey() reads this document
+    CE.layoutPrev = CE.layoutDefaults[ceTypeKey()];
+    if (CE.kind === "proposal") CE.includedPrevAuto = CE.includedAuto[ceIncludedInitialType()];
+    var intro = CE.mode === "template"
+      ? '<p class="hint" style="margin-bottom:14px">Edit the wording, laid out in the same order as the PDF. When you save you choose: use it for <b>only the ' + noun + " you're building now</b>, or make it the <b>standard</b> every new " + noun + " starts from (" + escapeHtml(ACTIVE_TEAM === "magcity" ? "MAG City" : "Dubai") + " team). " +
+        "Either way, " + noun + "s already issued keep the wording they were issued with.</p>"
+      : '<p class="hint" style="margin-bottom:14px">Sections follow the PDF from the first page to the last. The tag on each heading shows where it appears.</p>';
+    document.getElementById("ceBody").innerHTML = notice + intro + (CE.kind === "contract" ? ceContractSections() : ceProposalSections()) + uploadBtn + revs;
+    document.getElementById("ceSave").textContent = "Save";
+    document.getElementById("ceStatus").textContent = "";
+    CE.dirty = false;
+    if (isDoc) {
+      apFillUnits("ceType", "ceUnits", false);
+      document.getElementById("ceUnits").value = String(CE.doc.acUnits);
+      ceUpdateStdPriceBtn();
+      ceUpdatePaySummary();
+      apLoadSavedPriceFor(CE.doc.propertyType, CE.doc.acUnits).then(function () {
+        var std = ceStdPrices();
+        if (CE.kind === "contract") CE.lastStd = std[AP_META.tiers.indexOf(CE.doc.package)];
+        else CE.lastStd = std.slice();
+        var hint = document.getElementById("ceStdHint");
+        if (hint) hint.textContent = CE.kind === "contract"
+          ? "Standard price for this package: AED " + Math.round(CE.lastStd).toLocaleString()
+          : "Standard prices: AED " + std.map(function (v) { return Math.round(v).toLocaleString(); }).join(" / ");
+      });
+    }
+    if (!isDoc && ceHasPrices()) {
+      ceUpdateStdPriceBtn();
+      ceUpdatePaySummary();
+      var stdB = ceStdPrices();
+      CE.lastStd = stdB.slice();
+      var hintB = document.getElementById("ceStdHint");
+      if (hintB) hintB.textContent = "Standard prices: AED " + stdB.map(function (v) { return Math.round(v).toLocaleString(); }).join(" / ");
+    }
+    if (CE.kind === "contract") ceRenderBlocks();
+    document.getElementById("contractEditOverlay").classList.add("show");
+    ceClearPreviewFrames();
+    ceApplyPreviewPref();
+    ceSchedulePreview(0);
+  }
+
+  function ceLines(s) { return String(s).split("\n").filter(function (l) { return l.trim() !== ""; }); }
+
+  function ceBlockBodyHtml(b, i) {
+    var f = function (name, extra) { return 'data-f="' + name + '"' + (extra || ""); };
+    switch (b.type) {
+      case "title": case "heading": case "subheading":
+        return '<input type="text" ' + f("text") + ' value="' + escapeAttr(b.text) + '">';
+      case "p":
+        return '<textarea ' + f("text") + ">" + escapeHtml(b.text) + "</textarea>" +
+          '<label style="font-size:12px"><input type="checkbox" ' + f("indent") + (b.indent ? " checked" : "") + "> Indented</label>";
+      case "callout":
+        return '<textarea ' + f("text") + ">" + escapeHtml(b.text) + "</textarea>";
+      case "bullets": case "numbered":
+        return '<div class="ce-sub">One item per line</div><textarea ' + f("items") + ">" + escapeHtml(b.items.join("\n")) + "</textarea>" +
+          (b.type === "bullets" ? '<label style="font-size:12px"><input type="checkbox" ' + f("columns") + (b.columns === 2 ? " checked" : "") + "> Two columns</label>" : "");
+      case "definitions":
+        return '<div class="ce-sub">One per line: Term | Description</div><textarea ' + f("defs") + ">" +
+          escapeHtml(b.items.map(function (p) { return p[0] + " | " + p[1]; }).join("\n")) + "</textarea>";
+      case "checklist":
+        return '<input type="text" ' + f("title") + ' value="' + escapeAttr(b.title) + '" placeholder="Box title">' +
+          '<div class="ce-sub">One item per line</div><textarea ' + f("items") + ">" + escapeHtml(b.items.join("\n")) + "</textarea>";
+      case "table":
+        if (b.auto) {
+          return '<div class="ce-auto-note">Automatic table (' + escapeHtml(b.header.join(" / ")) + ") — recalculates from the contract details. " +
+            (CE.mode === "doc" ? '<button type="button" data-ce="detach">Edit this table manually</button>' : "") + "</div>";
+        }
+        return '<div class="ce-sub">Column headings, separated by |</div><input type="text" ' + f("thead") + ' value="' + escapeAttr(b.header.join(" | ")) + '">' +
+          '<div class="ce-sub">One row per line, cells separated by |</div><textarea ' + f("trows") + ">" +
+          escapeHtml(b.rows.map(function (r) { return r.join(" | "); }).join("\n")) + "</textarea>";
+      case "pagebreak":
+        return '<div class="ce-auto-note">— A new page starts here —</div>';
+      case "signature":
+        return '<div class="ce-auto-note">Signed-agreement block — shows the signatory and customer automatically.</div>';
+    }
+    return "";
+  }
+
+  function ceRenderBlocks() {
+    var insertOpts = '<option value="">+ Insert below…</option>' + Object.keys(CE_BLOCK_LABELS).filter(function (t) { return t !== "signature"; }).map(function (t) {
+      return '<option value="' + t + '">' + CE_BLOCK_LABELS[t] + "</option>"; }).join("");
+    document.getElementById("ceBlocks").innerHTML = CE.terms.map(function (b, i) {
+      return '<div class="ce-block' + (b.type === "pagebreak" ? " ce-pagebreak" : "") + '" data-i="' + i + '">' +
+        '<div class="ce-block-head"><span>' + (CE_BLOCK_LABELS[b.type] || b.type) + (b.auto ? " (automatic)" : "") + "</span><span class=\"ce-spacer\"></span>" +
+        '<button type="button" data-ce="up" title="Move up"' + (i === 0 ? " disabled" : "") + '>&uarr;</button>' +
+        '<button type="button" data-ce="down" title="Move down"' + (i === CE.terms.length - 1 ? " disabled" : "") + '>&darr;</button>' +
+        '<select data-ce="insert">' + insertOpts + "</select>" +
+        '<button type="button" data-ce="del" title="Delete block">&times;</button></div>' +
+        ceBlockBodyHtml(b, i) + "</div>";
+    }).join("");
+  }
+
+  function ceSetField(i, field, el) {
+    var b = CE.terms[i];
+    var v = el.type === "checkbox" ? el.checked : el.value;
+    if (field === "text") b.text = v;
+    else if (field === "title") b.title = v;
+    else if (field === "indent") b.indent = v;
+    else if (field === "columns") { if (v) b.columns = 2; else delete b.columns; }
+    else if (field === "items") b.items = ceLines(v);
+    else if (field === "defs") {
+      b.items = ceLines(v).map(function (l) {
+        var k = l.indexOf("|");
+        return k === -1 ? [l.trim(), ""] : [l.slice(0, k).trim(), l.slice(k + 1).trim()];
+      });
+    }
+    else if (field === "thead") b.header = v.split("|").map(function (s) { return s.trim(); });
+    else if (field === "trows") b.rows = ceLines(v).map(function (l) { return l.split("|").map(function (s) { return s.trim(); }); });
+  }
+
+  function ceCloseEditor(force) {
+    var finish = function () {
+      clearTimeout(CE_PREVIEW.timer);
+      CE_PREVIEW.seq++;
+      document.getElementById("contractEditOverlay").classList.remove("show");
+      ceClearPreviewFrames();
+      CE = null;
+    };
+    if (force || !CE || !CE.dirty) return finish();
+    confirmDialog("Discard your unsaved changes?", { confirmLabel: "Discard changes", cancelLabel: "Keep editing" })
+      .then(function (ok) { if (ok) finish(); });
+  }
+
+  // ---- live preview: renders the PDF from the editor's current, unsaved values ----
+  var CE_PREVIEW = { seq: 0, timer: null, pref: window.innerWidth >= 1100 };
+
+  function cePreviewOn() { return document.getElementById("contractEditOverlay").classList.contains("ce-preview-on"); }
+
+  function cePreviewRequest() {
+    if (CE.mode === "doc") {
+      var r = ceDocRequest();
+      var body = Object.assign({}, r.body, { team: CE.doc.team });
+      delete body.saveAsDefault;
+      if (CE.kind === "proposal") body.createdDate = (CE.doc.createdAt || "").slice(0, 10);
+      return { url: "/api/amc-" + CE.kind + "s/preview", body: body };
+    }
+    // Building from a Builder: preview with that Builder's own details and prices, so it matches its live preview.
+    var b = CE.builder;
+    var base = { team: ACTIVE_TEAM, clientName: b.clientName, propertyAddress: b.propertyAddress, propertyType: b.propertyType, acUnits: b.acUnits };
+    if (CE.kind === "contract") {
+      var stdC = apPriceFor(b.propertyType, b.acUnits, null);
+      return { url: "/api/amc-contracts/preview", body: Object.assign(base, {
+        package: b.package, payPlan: b.payPlan, startDate: b.startDate || todayISO(), signatory: b.signatory,
+        annualValue: stdC[Math.max(AP_META.tiers.indexOf(b.package), 0)], terms: ceCleanTerms(), layout: ceCurrentLayout() }) };
+    }
+    return { url: "/api/amc-proposals/preview", body: Object.assign(base, {
+      validUntil: addDays(todayISO(), b.validityDays || 30), prices: ceCurrentPrices(), wording: ceCurrentWording() }) };
+  }
+
+  function cePreviewSetStatus(text) { document.getElementById("cePreviewStatus").textContent = text; }
+
+  function ceSchedulePreview(delay) {
+    if (!CE || !cePreviewOn()) return;
+    clearTimeout(CE_PREVIEW.timer);
+    cePreviewSetStatus("Updating…");
+    CE_PREVIEW.timer = setTimeout(ceRenderPreview, delay == null ? 800 : delay);
+  }
+
+  function ceClearPreviewFrames() {
+    document.querySelectorAll("#cePreviewFrame iframe").forEach(function (f) { URL.revokeObjectURL(f.dataset.blob); f.remove(); });
+    document.getElementById("cePreviewMsg").textContent = "";
+    cePreviewSetStatus("");
+  }
+
+  function ceRenderPreview() {
+    if (!CE || !cePreviewOn()) return;
+    var seq = ++CE_PREVIEW.seq;
+    var req;
+    try { req = cePreviewRequest(); } catch (e) { return; }
+    fetch(req.url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req.body) })
+      .then(function (r) {
+        if (r.status === 401) { window.location.href = "/login.html"; throw new Error("not authenticated"); }
+        if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || "Could not build the preview"); });
+        return r.blob();
+      })
+      .then(function (blob) {
+        if (!CE || seq !== CE_PREVIEW.seq) return;
+        var wrap = document.getElementById("cePreviewFrame");
+        var url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+        var frame = document.createElement("iframe");
+        frame.title = "Live preview";
+        frame.dataset.blob = url;
+        frame.style.visibility = "hidden";
+        var swapped = false;
+        function swap() {
+          if (swapped) return;
+          swapped = true;
+          wrap.querySelectorAll("iframe").forEach(function (o) { if (o !== frame) { URL.revokeObjectURL(o.dataset.blob); o.remove(); } });
+          frame.style.visibility = "visible";
+        }
+        frame.addEventListener("load", swap);
+        setTimeout(swap, 4000);
+        frame.src = url + "#toolbar=0&view=FitH";
+        wrap.appendChild(frame);
+        document.getElementById("cePreviewMsg").textContent = "";
+        cePreviewSetStatus("Up to date");
+      })
+      .catch(function (err) {
+        if (!CE || seq !== CE_PREVIEW.seq) return;
+        cePreviewSetStatus("");
+        document.getElementById("cePreviewMsg").textContent = "Preview unavailable: " + (err.message || "error");
+      });
+  }
+
+  function ceApplyPreviewPref() {
+    document.getElementById("contractEditOverlay").classList.toggle("ce-preview-on", CE_PREVIEW.pref);
+    document.getElementById("cePreviewToggle").checked = CE_PREVIEW.pref;
+  }
+
+  function ceCleanTerms() {
+    return CE.terms.filter(function (b) {
+      return !(["title", "heading", "subheading", "p", "callout"].indexOf(b.type) !== -1 && !String(b.text || "").trim());
+    });
+  }
+
+  function ceCurrentWording() {
+    return { terms: ceLines(document.getElementById("ceTerms").value), note: document.getElementById("ceNote").value, layout: ceCurrentLayout(),
+             highlights: CE.highlights, comparison: CE.comparison, included: ceCurrentIncluded() };
+  }
+
+  // The request that saves the document currently open in the editor.
+  function ceDocRequest() {
+    var body, url;
+    if (CE.kind === "contract") {
+      url = "/api/amc-contracts/" + CE.id;
+      body = {
+        clientName: document.getElementById("ceClient").value.trim(),
+        propertyAddress: document.getElementById("ceAddr").value.trim(),
+        propertyType: document.getElementById("ceType").value,
+        acUnits: parseInt(document.getElementById("ceUnits").value, 10),
+        package: document.getElementById("cePackage").value,
+        payPlan: document.getElementById("cePayPlan").value,
+        startDate: document.getElementById("ceStart").value,
+        contractDate: document.getElementById("ceContractDate").value,
+        signatory: document.getElementById("ceSignatory").value,
+        annualValue: parseFloat(document.getElementById("ceAnnual").value),
+        valueText: document.getElementById("ceValueText").value.trim(),
+        terms: ceCleanTerms(),
+        layout: ceCurrentLayout()
+      };
+    } else {
+      url = "/api/amc-proposals/" + CE.id;
+      body = {
+        clientName: document.getElementById("ceClient").value.trim(),
+        propertyAddress: document.getElementById("ceAddr").value.trim(),
+        propertyType: document.getElementById("ceType").value,
+        acUnits: parseInt(document.getElementById("ceUnits").value, 10),
+        validUntil: document.getElementById("ceValidUntil").value,
+        prices: {
+          basic: parseFloat(document.getElementById("cePriceBasic").value),
+          standard: parseFloat(document.getElementById("cePriceStandard").value),
+          premium: parseFloat(document.getElementById("cePricePremium").value)
+        },
+        wording: ceCurrentWording()
+      };
+    }
+    return { url: url, body: body };
+  }
+
+  function ceSave() {
+    var status = document.getElementById("ceStatus");
+    var btn = document.getElementById("ceSave");
+    var noun = CE.kind;
+    var fail = function (err) { status.textContent = err.message || "Could not save"; };
+    var finishBusy = function () { btn.disabled = false; };
+
+    if (CE.mode === "template") {
+      askSaveScope(noun, CURRENT_USER_ROLE === "admin", true).then(function (scope) {
+        if (!scope) return;
+        if (scope === "this") {
+          var pendingData = noun === "contract" ? { terms: ceCleanTerms(), layout: ceCurrentLayout() } : ceCurrentWording();
+          if (noun === "proposal") pendingData.overrides = ceOverrides();
+          setPendingWording(noun, pendingData);
+          toast("Custom wording" + (noun === "proposal" && pendingData.overrides.some(function (o) { return o != null; }) ? " and prices" : "") +
+            " will be used for the " + noun + " you generate next — the standard is unchanged");
+          ceCloseEditor(true);
+          return;
+        }
+        btn.disabled = true;
+        var req = noun === "contract"
+          ? API.put("/api/amc-contracts/default-terms", { team: ACTIVE_TEAM, terms: ceCleanTerms(), layout: ceCurrentLayout() })
+          : API.put("/api/amc-proposals/default-wording", { team: ACTIVE_TEAM, wording: ceCurrentWording() });
+        req.then(function () {
+          // wording is now the standard; any prices changed here still apply to this proposal only
+          var ov = noun === "proposal" ? ceOverrides() : [];
+          setPendingWording(noun, ov.some(function (o) { return o != null; }) ? Object.assign(ceCurrentWording(), { overrides: ov }) : null);
+          toast("Standard " + noun + " wording saved — used for all future " + noun + "s");
+          ceCloseEditor(true);
+        }).catch(fail).then(finishBusy);
+      });
+      return;
+    }
+
+    var req = ceDocRequest();
+    var body = req.body, url = req.url;
+    askSaveScope(noun, CURRENT_USER_ROLE === "admin").then(function (scope) {
+      if (!scope) return;
+      body.saveAsDefault = scope === "all";
+      btn.disabled = true;
+      status.textContent = "Saving and regenerating the PDF…";
+      API.put(url, body).then(function (d) {
+        toast(scope === "all"
+          ? "Saved — and set as the standard for all future " + noun + "s"
+          : "Saved for this " + noun + " only (version " + d.revision + ")");
+        ceCloseEditor(true);
+        loadAmcProposalsAll();
+      }).catch(fail).then(finishBusy);
+    });
+  }
+
+  function ceResetWording() {
+    var url = (CE.kind === "contract" ? "/api/amc-contracts/default-terms?team=" : "/api/amc-proposals/default-wording?team=");
+    confirmDialog("Replace ALL the wording and cover text with the current standard? Your edits to the wording here will be lost (the details above are kept).", { confirmLabel: "Reset wording" })
+      .then(function (ok) {
+        if (!ok) return;
+        API.get(url + encodeURIComponent(CE.mode === "doc" ? CE.doc.team : ACTIVE_TEAM)).then(function (d) {
+          CE.dirty = true;
+          if (CE.kind === "contract") { CE.terms = d.terms; ceRenderBlocks(); ceApplyLayout(d.layout); }
+          else {
+            document.getElementById("ceTerms").value = d.wording.terms.join("\n");
+            document.getElementById("ceNote").value = d.wording.note;
+            ceApplyLayout(d.wording.layout);
+            CE.highlights = JSON.parse(JSON.stringify(d.highlights));
+            document.getElementById("ceHlGrid").innerHTML = ceHighlightsGridHtml();
+            CE.comparison = JSON.parse(JSON.stringify(d.comparison));
+            document.getElementById("ceCmpGrid").innerHTML = ceCmpGridHtml();
+            CE.includedAuto = d.autoIncluded;
+            var tk = ceIncludedTypeKey();
+            document.getElementById("ceIncluded").value = (d.included || d.autoIncluded[tk]).join("\n");
+            CE.includedPrevAuto = d.autoIncluded[tk];
+          }
+          ceSchedulePreview(0);
+        });
+      });
+  }
+
+  // Replaces a contract's/proposal's PDF with a user-supplied file.
+  var UPLOAD_TARGET = null;
+  function startPdfUpload(kind, id) {
+    UPLOAD_TARGET = { kind: kind, id: id };
+    var input = document.getElementById("pdfUploadInput");
+    input.value = "";
+    input.click();
+  }
+
+  function handlePdfChosen(file) {
+    var target = UPLOAD_TARGET;
+    UPLOAD_TARGET = null;
+    if (!file || !target) return;
+    var noun = target.kind;
+    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") { toast("Please choose a PDF file"); return; }
+    if (file.size > 12 * 1024 * 1024) { toast("That PDF is over the 12 MB limit"); return; }
+    confirmDialog("Replace this " + noun + "'s PDF with \"" + file.name + "\"? Only this " + noun + " changes (the standard wording is not affected), and the current version is kept as an earlier version.",
+      { confirmLabel: "Replace PDF" }).then(function (ok) {
+      if (!ok) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var b64 = String(reader.result).split(",")[1] || "";
+        var base = target.kind === "contract" ? "/api/amc-contracts/" : "/api/amc-proposals/";
+        API.post(base + target.id + "/upload", { filename: file.name, dataBase64: b64 }).then(function () {
+          toast("PDF replaced with " + file.name);
+          if (CE && CE.id === target.id) ceCloseEditor(true);
+          loadAmcProposalsAll();
+        }).catch(function (err) { toast(err.message || "Could not upload the PDF"); });
+      };
+      reader.onerror = function () { toast("Could not read that file"); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function initContractEditor() {
+    document.getElementById("pdfUploadInput").addEventListener("change", function (e) { handlePdfChosen(e.target.files[0]); });
+    document.getElementById("ceClose").addEventListener("click", function () { ceCloseEditor(false); });
+    document.getElementById("ceCancel").addEventListener("click", function () { ceCloseEditor(false); });
+    document.getElementById("ceSave").addEventListener("click", ceSave);
+    document.getElementById("apBtnEditStdContract").addEventListener("click", function () { ceOpenTemplate("contract"); });
+    document.addEventListener("click", function (e) {
+      var clr = e.target.closest && e.target.closest("[data-clear-pending]");
+      if (clr) { e.preventDefault(); setPendingWording(clr.dataset.clearPending, null); toast("Back to the standard wording"); }
+    });
+    document.getElementById("apBtnEditStdProposal").addEventListener("click", function () { ceOpenTemplate("proposal"); });
+
+    var body = document.getElementById("ceBody");
+    var markDirty = function () { if (CE) CE.dirty = true; };
+    document.getElementById("cePreviewToggle").addEventListener("change", function (e) {
+      CE_PREVIEW.pref = e.target.checked;
+      ceApplyPreviewPref();
+      if (CE_PREVIEW.pref) ceSchedulePreview(0);
+    });
+    document.getElementById("cePreviewRefresh").addEventListener("click", function () { ceSchedulePreview(0); });
+    body.addEventListener("input", function (e) {
+      ceUpdatePaySummary();
+      if (e.target.dataset.cmp) {
+        var rc = e.target.dataset.cmp.split(":");
+        CE.comparison[+rc[0]][+rc[1]] = e.target.value;
+      }
+      if (e.target.dataset.hl) {
+        var cell = CE.highlights[+e.target.dataset.t][+e.target.dataset.b];
+        if (e.target.dataset.hl === "text") cell.text = e.target.value; else cell.off = e.target.checked;
+      }
+      ceSchedulePreview();
+      markDirty();
+      var blockEl = e.target.closest(".ce-block");
+      if (blockEl && e.target.dataset.f) ceSetField(parseInt(blockEl.dataset.i, 10), e.target.dataset.f, e.target);
+    });
+    body.addEventListener("change", function (e) {
+      ceUpdatePaySummary();
+      ceSchedulePreview();
+      markDirty();
+      var t = e.target;
+      var blockEl = t.closest(".ce-block");
+      if (blockEl && t.dataset.ce === "insert" && t.value) {
+        var i = parseInt(blockEl.dataset.i, 10);
+        CE.terms.splice(i + 1, 0, ceNewBlock(t.value));
+        ceRenderBlocks();
+        return;
+      }
+      if (blockEl && t.type === "checkbox" && t.dataset.f) ceSetField(parseInt(blockEl.dataset.i, 10), t.dataset.f, t);
+      if (t.id === "ceType") { apFillUnits("ceType", "ceUnits", true); ceRefreshStdPrice(false); ceSyncLayoutDefaults(); ceUpdateStdPriceBtn(); ceSyncIncludedDefaults(); }
+      else if (t.id === "ceUnits" || t.id === "cePackage") ceRefreshStdPrice(false);
+    });
+    body.addEventListener("click", function (e) {
+      var t = e.target;
+      if (t.tagName === "BUTTON" || t.tagName === "A") ceSchedulePreview();
+      if (t.id === "ceResetPrice") { e.preventDefault(); ceRefreshStdPrice(true); markDirty(); return; }
+      if (t.id === "ceSaveStdPrice") { ceSaveStdPrice(); return; }
+      if (t.id === "ceCmpAdd") {
+        CE.comparison.push(["", "", "", ""]);
+        document.getElementById("ceCmpGrid").innerHTML = ceCmpGridHtml();
+        markDirty();
+        return;
+      }
+      if (t.dataset && t.dataset.cmpDel !== undefined) {
+        if (CE.comparison.length > 1) CE.comparison.splice(+t.dataset.cmpDel, 1);
+        document.getElementById("ceCmpGrid").innerHTML = ceCmpGridHtml();
+        markDirty();
+        return;
+      }
+      if (t.id === "ceUploadPdf") { startPdfUpload(CE.kind, CE.id); return; }
+      if (t.id === "ceAddBlock") {
+        CE.terms.push(ceNewBlock(document.getElementById("ceAddType").value));
+        markDirty(); ceRenderBlocks();
+        var list = document.getElementById("ceBlocks");
+        list.lastElementChild && list.lastElementChild.scrollIntoView({ block: "center" });
+        return;
+      }
+      if (t.id === "ceResetTerms") { ceResetWording(); return; }
+      var action = t.dataset && t.dataset.ce;
+      var blockEl = t.closest && t.closest(".ce-block");
+      if (!action || !blockEl || action === "insert") return;
+      var i = parseInt(blockEl.dataset.i, 10);
+      if (action === "up" && i > 0) { var a = CE.terms.splice(i, 1)[0]; CE.terms.splice(i - 1, 0, a); }
+      else if (action === "down" && i < CE.terms.length - 1) { var d = CE.terms.splice(i, 1)[0]; CE.terms.splice(i + 1, 0, d); }
+      else if (action === "del") { CE.terms.splice(i, 1); }
+      else if (action === "detach") {
+        var b = CE.terms[i];
+        b.rows = CE.autoTables[b.auto].map(function (r) { return r.slice(); });
+        delete b.auto;
+      } else return;
+      markDirty();
+      ceRenderBlocks();
+    });
   }
 
   function apSwitchSubtab(name) {
@@ -3773,13 +4776,7 @@
       apRenderPreview();
       apLoadSavedPrice();
     });
-    ["apOverrideBasic", "apOverrideStandard", "apOverridePremium"].forEach(function (id) {
-      document.getElementById(id).addEventListener("input", apRenderPreview);
-      document.getElementById(id).addEventListener("change", apRenderPreview);
-    });
     document.getElementById("apBtnSaveRates").addEventListener("click", apSaveCommRates);
-    document.getElementById("apBtnSaveHighlights").addEventListener("click", apSaveHighlights);
-    document.getElementById("apBtnSaveStandardPrice").addEventListener("click", apSaveStandardPrice);
     document.getElementById("apBtnGenerate").addEventListener("click", apGenerateProposal);
     document.getElementById("apPreviewCards").addEventListener("click", function (e) {
       var btn = e.target.closest("[data-create-contract]");
@@ -3805,14 +4802,32 @@
       var dl = e.target.closest("[data-dl-proposal]");
       if (dl) { window.open("/api/amc-proposals/" + dl.dataset.dlProposal + "/pdf", "_blank"); return; }
       var ed = e.target.closest("[data-edit-proposal]");
-      if (ed) { apEditProposalFromLog(ed.dataset.editProposal); return; }
+      if (ed) { ceOpenProposalEditor(ed.dataset.editProposal); return; }
+      var upl = e.target.closest("[data-upload-proposal]");
+      if (upl) { startPdfUpload("proposal", upl.dataset.uploadProposal); return; }
+      var dup = e.target.closest("[data-dup-proposal]");
+      if (dup) { apEditProposalFromLog(dup.dataset.dupProposal); return; }
       var cc = e.target.closest("[data-cc-proposal]");
       if (cc) apCreateContractFromLog(cc.dataset.ccProposal);
     });
     document.getElementById("apContractLogBody").addEventListener("click", function (e) {
       var dl = e.target.closest("[data-dl-contract]");
-      if (dl) window.open("/api/amc-contracts/" + dl.dataset.dlContract + "/pdf", "_blank");
+      if (dl) { window.open("/api/amc-contracts/" + dl.dataset.dlContract + "/pdf", "_blank"); return; }
+      var upc = e.target.closest("[data-upload-contract]");
+      if (upc) { startPdfUpload("contract", upc.dataset.uploadContract); return; }
+      var ed = e.target.closest("[data-edit-contract]");
+      if (ed) ceOpenEditor(ed.dataset.editContract);
     });
+    document.getElementById("apContractLogBody").addEventListener("change", function (e) {
+      var cell = e.target.closest(".ap-pay-cell");
+      if (!cell) return;
+      var which = e.target.classList.contains("ap-pay-amt") ? "amt" : (e.target.classList.contains("ap-pay-status") ? "status" : "notes");
+      apSavePayment(cell, which);
+    });
+    document.getElementById("apBtnExportContracts").addEventListener("click", function () {
+      window.location.href = "/api/amc-contracts/export?team=" + encodeURIComponent(ACTIVE_TEAM);
+    });
+    initContractEditor();
   }
 
   function boot() {

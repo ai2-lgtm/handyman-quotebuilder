@@ -455,3 +455,79 @@ table.amc-table tr.amc-row-archived:hover{opacity:.8;}
 .amc-schedule-preview{background:var(--soft);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--ink);margin-top:16px;line-height:1.6;}
 .amc-form-errors{background:#FDEAE8;color:var(--red);border-radius:8px;padding:10px 14px;margin-top:12px;font-weight:600;}
 .amc-field-error input,.amc-field-error select{border-color:var(--red) !important;}
+
+/* AMC contracts: inline payments cell + contract editor */
+.ap-pay-cell{min-width:190px;}
+.ap-pay-cell select,.ap-pay-cell input{display:block;width:100%;box-sizing:border-box;margin:0 0 4px;padding:4px 6px;font-size:12px;}
+.ap-pay-bal{font-size:11px;color:var(--muted);}
+.ap-pay-bal.due{color:var(--red);font-weight:700;}
+.ap-pay-cell.saved{outline:2px solid #BEE6CC;outline-offset:2px;border-radius:6px;}
+.ce-modal{max-width:1000px;}
+.ce-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 22px;border-top:1px solid var(--line);flex:0 0 auto;background:#fff;}
+.ce-section{margin:0 0 22px;}
+.ce-section > h4{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line);}
+.ce-token-list{font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.7;}
+.ce-token-list code{background:var(--soft);padding:1px 5px;border-radius:4px;color:var(--ink);}
+.ce-block{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 8px;background:#fff;}
+.ce-block.ce-pagebreak{background:var(--soft);border-style:dashed;text-align:center;}
+.ce-block-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+.ce-block-head .ce-spacer{flex:1;}
+.ce-block-head button,.ce-block-head select{font-size:12px;padding:2px 7px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;color:var(--ink);}
+.ce-block-head button:hover{background:var(--soft);}
+.ce-block textarea,.ce-block input[type=text]{width:100%;box-sizing:border-box;font-size:13px;}
+.ce-block textarea{min-height:60px;resize:vertical;font-family:inherit;}
+.ce-block .ce-sub{font-size:11px;color:var(--muted);margin:4px 0 2px;}
+.ce-auto-note{font-size:12px;color:var(--muted);}
+.ce-revs a{margin-right:14px;}
+#contractEditOverlay{z-index:90;}
+.ce-block-head > span:first-child{white-space:nowrap;}
+.ce-block-head select{max-width:170px;}
+.amc-pay-edit{min-width:200px;}
+.amc-pay-input{width:100%;box-sizing:border-box;padding:5px 8px;font-size:12px;border:1px solid transparent;background:transparent;border-radius:6px;}
+.amc-pay-input:hover{border-color:var(--line);background:#fff;}
+.amc-pay-input:focus{border-color:var(--orange);background:#fff;outline:none;}
+.amc-pay-edit.saved .amc-pay-input{border-color:#BEE6CC;background:#EAF7EF;}
+.scope-options{display:flex;flex-direction:column;gap:8px;}
+.scope-options .btn{width:100%;text-align:left;white-space:normal;}
+.scope-options .btn small{display:block;font-weight:400;opacity:.85;margin-top:2px;}
+.ce-prices{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+
+.ce-modal{max-width:1500px;width:96vw;height:88vh;}
+.ce-main{display:flex;flex:1 1 auto;min-height:0;}
+.ce-form{flex:1 1 0;min-width:0;}
+.ce-preview{display:none;flex:0 0 48%;min-width:0;flex-direction:column;border-left:1px solid var(--line);background:var(--soft);}
+#contractEditOverlay.ce-preview-on .ce-preview{display:flex;}
+.ce-preview-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:#fff;font-size:12px;}
+.ce-preview-bar .hint{margin:0;flex:1;}
+.ce-preview-note{padding:6px 12px;font-size:11px;color:var(--muted);background:#fff;border-bottom:1px solid var(--line);}
+.ce-preview-frame{position:relative;flex:1 1 auto;min-height:0;}
+.ce-preview-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;}
+.ce-preview-msg{padding:0 12px;font-size:12px;color:var(--red);}
+.ce-preview-msg:not(:empty){padding:8px 12px;border-top:1px solid var(--line);background:#fff;}
+.ce-toggle{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;}
+@media (max-width:1000px){
+  #contractEditOverlay.ce-preview-on .ce-form{display:none;}
+  #contractEditOverlay.ce-preview-on .ce-preview{flex:1 1 auto;border-left:0;}
+}
+
+.ce-hl-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.ce-hl-tier{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
+.ce-hl-row{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
+.ce-hl-row input[type=text]{flex:1;min-width:0;box-sizing:border-box;}
+.ce-hl-row label{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);white-space:nowrap;text-transform:none;font-weight:400;}
+@media (max-width:1200px){.ce-hl-grid{grid-template-columns:1fr;}}
+
+.ce-pg{display:inline-block;margin-right:8px;padding:1px 8px;border-radius:10px;background:#FDEAE8;color:var(--orange);font-size:10px;font-weight:700;letter-spacing:.3px;vertical-align:1px;}
+.ce-table{width:100%;border-collapse:collapse;font-size:12px;}
+.ce-table th{background:var(--navy);color:#fff;padding:5px 8px;text-align:right;font-weight:700;}
+.ce-table td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right;}
+.ce-table td:first-child,.ce-table th:first-child{text-align:left;}
+
+.ap-pending{margin:0 0 12px;padding:8px 12px;border-radius:8px;background:#FEF3EE;border:1px solid #F4B79B;color:#8C3007;font-size:12.5px;}
+.ap-pending a{font-weight:700;margin-left:8px;}
+
+.ce-cmp-row{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr 28px;gap:6px;margin-bottom:6px;align-items:center;}
+.ce-cmp-row input{min-width:0;box-sizing:border-box;width:100%;}
+.ce-cmp-head{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+.ce-cmp-row button{border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;color:var(--ink);font-size:14px;line-height:1;padding:4px 0;}
+.ce-cmp-row button:hover{background:var(--soft);}

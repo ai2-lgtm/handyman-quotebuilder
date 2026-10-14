@@ -114,21 +114,37 @@ def callouts_for(property_type):
     return {"basic": 8, "standard": 12}  # apartment
 
 
-def comparison_rows(property_type):
+# Editable default for the "What each package covers" table: [label, Basic, Standard, Premium].
+# "{callouts}" in the Basic/Standard columns is replaced with that property type's real call-out count.
+DEFAULT_COMPARISON = [
+    ["AC PPM visits", "2 per unit, per year", "3 per unit, per year", "4 per unit, per year"],
+    ["Plumbing PPM visits", "2 per year", "3 per year", "4 per year"],
+    ["Electrical PPM visits", "2 per year", "3 per year", "4 per year"],
+    ["MEP call-outs", "{callouts} per year", "{callouts} per year", "Unlimited"],
+    ["Parts & materials per call-out", "Not included", "Up to AED 50", "Up to AED 150"],
+    ["Handyman visits included", "Not included", "1 x 1 hour", "2 x 1 hour"],
+    ["Additional handyman work", "AED 160 per hour", "20% off standard rate", "20% off standard rate"],
+]
+
+
+def comparison_rows(property_type, template=None):
     co = callouts_for(property_type)
-    callouts = ("%d per year" % co["basic"], "%d per year" % co["standard"], "Unlimited")
-    return [
-        ("AC PPM visits", ("2 per unit, per year", "3 per unit, per year", "4 per unit, per year")),
-        ("Plumbing PPM visits", ("2 per year", "3 per year", "4 per year")),
-        ("Electrical PPM visits", ("2 per year", "3 per year", "4 per year")),
-        ("MEP call-outs", callouts),
-        ("Parts & materials per call-out", ("Not included", "Up to AED 50", "Up to AED 150")),
-        ("Handyman visits included", ("Not included", "1 x 1 hour", "2 x 1 hour")),
-        ("Additional handyman work", ("AED 160 per hour", "20% off standard rate", "20% off standard rate")),
-    ]
+    sub = (str(co["basic"]), str(co["standard"]), None)
+    rows = []
+    for r in (template or DEFAULT_COMPARISON):
+        cells = []
+        for i in range(3):
+            text = r[i + 1]
+            if sub[i] is not None:
+                text = text.replace("{callouts}", sub[i])
+            cells.append(text)
+        rows.append((r[0], tuple(cells)))
+    return rows
 
 
-def always_included(property_type):
+def always_included(property_type, override=None):
+    if override:
+        return list(override)
     base = [
         "Priority emergency response",
         "Minor A/C gas top-ups",
